@@ -126,7 +126,7 @@ def evaluate(model, vocab, sentence_length, sample_length=200):
 
 def main():
     #配置参数
-    epoch_num = 20        #训练轮数
+    epoch_num = 10        #训练轮数
     batch_size = 20       #每次训练样本个数
     train_sample = 5000    #每轮训练总共训练的样本总数
     char_dim = 20         #每个字的维度
@@ -172,7 +172,8 @@ def predict(model_path, vocab_path, input_strings):
     model.load_state_dict(torch.load(model_path))             #加载训练好的权重
     x = []
     for input_string in input_strings:
-        x.append([vocab[char] for char in input_string])  #将输入序列化
+        x.append([vocab.get(char, vocab['unk']) for char in input_string])  #将输入序列化
+
     model.eval()   #测试模式
     with torch.no_grad():  #不计算梯度
         y_p = model.forward(torch.LongTensor(x))  #模型预测
@@ -193,5 +194,5 @@ def predict(model_path, vocab_path, input_strings):
 
 if __name__ == "__main__":
     main()
-    test_strings = ["fnvf我e", "wz你d我g", "rqwdeg", "n我kwww"]
+    test_strings = ["fnvf我e", "wz你d我g", "aqwdeg", "n我kwww"]
     predict("model1.pth", "vocab.json", test_strings)
