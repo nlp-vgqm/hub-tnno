@@ -1,0 +1,1 @@
+This is sdz directory.
