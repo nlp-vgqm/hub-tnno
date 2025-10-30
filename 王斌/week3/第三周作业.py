@@ -151,5 +151,5 @@ def predict(model_path, input_strings):
  
 if __name__ == "__main__":
     main()
-    test_strings = ["kijabcdefh", "gijkbcdeaf", "gkijadfbec", "kijhdeface","dfhdjhdhee"]
+    test_strings = ["cdefhkijab", "gijcdkbeaf", "jadgkifbec", "kdefijhace","dfhdjhdhee"]
     predict("model.pth", test_strings)
