@@ -1,0 +1,244 @@
+# coding:utf8
+
+import torch
+import torch.nn as nn
+import numpy as np
+import random
+import json
+
+"""
+
+基于pytorch的网络编写
+实现一个网络完成一个简单nlp任务
+判断特定字符在文本中的位置
+
+"""
+
+
+class Torch_mRNN(nn.Module):
+    def __init__(self, vector_dim, sentence_length, vocab, hidden_size=128, num_layers=2):
+        super(Torch_mRNN, self).__init__()
+        self.embedding = nn.Embedding(len(vocab), vector_dim, padding_idx=0)  # embedding层
+        # 使用双向LSTM
+        # vector_dim：输入特征维度（即每个时间步输入的向量维度）
+        # hidden_size：隐藏状态的维度（即每个时间步输出的向量维度，也是LSTM内部隐藏层的维度）
+        # num_layers：LSTM的层数（层数越多，模型越复杂，学习能力越强）
+        # batch_first：如果为True，则输入和输出张量的形状为(batch, seq_len, feature)；否则为(seq_len, batch, feature)。默认为False，但这里设置为True。
+        # bidirectional：如果为True，则使用双向LSTM，即两个LSTM一个从前向后，一个从后向前，最后将两个方向的输出拼接起来。默认是False。
+        # dropout：如果非0，则在除最后一层外的每个LSTM层后引入一个dropout层，dropout概率等于该值。默认0。
+        # 关于dropout：在LSTM中，如果有多个层（num_layers>1），则除了最后一层外，其它层都会接入dropout。如果只有一层，则不会使用dropout。
+        # 输出形状：(batch, seq_len, hidden_size * 2) [因为双向，所以是2倍 hidden_size]
+        # 隐藏状态和细胞状态: 每层的每个方向都有一个隐藏状态和细胞状态，所以形状为 (num_layers * 2, batch, hidden_size) [双向所以2倍]
+        self.rnn = nn.LSTM(vector_dim, hidden_size, num_layers, batch_first=True, bidirectional=True, dropout=0.3)
+        # 输出层：每个位置一个输出（0或1）
+        self.classify = nn.Linear(hidden_size * 2, 1)  # 双向LSTM, 所以*2
+        self.activation = torch.sigmoid  # sigmoid归一化函数
+        self.loss = nn.functional.binary_cross_entropy  # 使用二元交叉熵损失
+
+    # 当输入真实标签，返回loss值；无真实标签，返回预测值
+    def forward(self, x, y=None):
+        x = self.embedding(x)  # (batch_size, sen_len) -> (batch_size, sen_len, vector_dim)
+
+        # RNN处理
+        # 两个返回值：1、所有时间步的隐藏状态； 2、最后一个时间步的隐藏状态
+        rnn_out, _ = self.rnn(x)  # (batch_size, sen_len, hidden_size * 2)
+
+        # 每个位置单独分类
+        x = self.classify(rnn_out)  # (batch_size, sen_len, 1)
+        x = x.squeeze(-1)  # (batch_size, sen_len)  # squeeze(-1)表示移除最后一个维度（如果其大小为1）
+        y_pred = self.activation(x)  # (batch_size, sen_len)
+
+        if y is not None:
+            # 计算每个位置的损失
+            return self.loss(y_pred, y)
+        else:
+            return y_pred  # 输出每个位置的预测概率
+
+
+# 字符集，为每个字生成一个标号
+def build_vocab():
+    chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"  # 字符集
+    vocab = {"pad": 0}
+    for index, char in enumerate(chars):
+        vocab[char] = index + 1  # 每个字对应一个序号
+    vocab['unk'] = len(vocab)
+    return vocab
+
+
+# 随机生成一个样本
+# 从字符集中随机选取s_length个字
+def build_sample(vocab, s_length):
+    # 随机从字表选取s_length个字，可能重复
+    x = [random.choice(list(vocab.keys())) for _ in range(s_length)]
+    # 为每个位置生成标签(序列标签)：1表示是特定字符"ABC"，0表示不是
+    y = [1 if char in "ABC" else 0 for char in x]  # x,y 均为长度为s_length的列表，y中，出现ABC任一字符的位置为1，其余为0
+
+    x = [vocab.get(word, vocab['unk']) for word in x]  # 将字转换成序号，为了做embedding
+    return x, y
+
+
+# 建立数据集
+# 输入需要的样本数量。需要多少生成多少
+# sample_length：样本数量
+# sentence_length：样本中字符串长度
+def build_dataset(sample_length, vocab, sentence_length):
+    dataset_x = []
+    dataset_y = []
+    for i in range(sample_length):
+        x, y = build_sample(vocab, sentence_length)
+        dataset_x.append(x)
+        dataset_y.append(y)
+        # x:整数序列，每个字符映射到词汇表中的整数索引
+        # y:每个位置的标签，在二分类中通常用0和1表示，但由于损失函数（如BCELoss）要求浮点数,所以将y转换为FloatTensor
+        # y:(batch_size, sentence_length)
+    return torch.LongTensor(dataset_x), torch.FloatTensor(dataset_y)
+
+
+# 建立模型
+def build_model(vocab, char_dim, sentence_length):
+    model = Torch_mRNN(char_dim, sentence_length, vocab)
+    return model
+
+
+# 测试代码
+# 用来测试每轮模型的准确率
+def evaluate(model, vocab, sample_length):
+    model.eval()  # 设置评估模式
+    x, y = build_dataset(200, vocab, sample_length)  # 建立200个用于测试的样本
+
+    # 统计正样本位置数量
+    # y == 1：是判断y中每个标签位置是否为1
+    # .sum()默认会计算所有维度上的和，得到一个标量张量，然后.item()将其转换为Python数字
+    positive_positions = (y == 1).sum().item()
+    print(f"本次预测集中共有{positive_positions}个正样本位置")
+
+    correct, total = 0, 0
+    with torch.no_grad():
+        # 模型预测
+        y_pred = model(x)
+        # 将预测结果转换为0/1
+        # .float()将布尔张量转换为浮点数张量，即True变成1.0，False变成0.0。
+        predictions = (y_pred > 0.5).float()
+
+        # 计算准确率
+        correct = (predictions == y).sum().item()
+        # total：样本数量 * 样本长度
+        total = y.numel()
+
+    accuracy = correct / total
+    print(f"正确预测位置：{correct}/{total}, 准确率：{accuracy:.4f}")
+
+    # 额外计算精确率和召回率
+    # 精确率(模型预测为正例的样本中，有多少是真正的正例， 衡量的是模型预测的准确性)------------------------>误报
+    # 精确率 = 真正例 / (真正例 + 假正例)
+    # 召回率(所有实际为正例的样本中，模型正确预测为正例的比例， 衡量的是模型发现正例的能力)------------------>漏报
+    # 召回率 = 真正例 / (真正例 + 假负例)
+    true_positive = ((predictions == 1) & (y == 1)).sum().item()
+    predicted_positive = (predictions == 1).sum().item()
+    actual_positive = (y == 1).sum().item()
+
+    precision = true_positive / predicted_positive if predicted_positive > 0 else 0
+    recall = true_positive / actual_positive if actual_positive > 0 else 0
+
+    print(f"精确率：{precision:.4f}, 召回率：{recall:.4f}")
+    print("-" * 50)
+
+    return accuracy
+
+
+def main():
+    # 配置参数
+    epoch_num = 50          # 训练轮数
+    batch_size = 32         # 每次训练样本个数
+    train_sample = 1000      # 每轮训练总共训练的样本总数
+    char_dim = 50            # 每个字的维度
+    sentence_length = 10     # 样本文本长度
+    learning_rate = 0.0005   # 学习率
+
+    # 建立字表
+    vocab = build_vocab()
+    # 建立模型
+    model = build_model(vocab, char_dim, sentence_length)
+    # 选择优化器
+    optim = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    log = []
+
+    # 训练过程
+    for epoch in range(epoch_num):
+        model.train()
+        watch_loss = []
+        for batch in range(int(train_sample / batch_size)):
+            x, y = build_dataset(batch_size, vocab, sentence_length)  # 构造一组训练样本
+            optim.zero_grad()  # 梯度归零
+            loss = model(x, y)  # 计算loss
+            loss.backward()  # 计算梯度
+            optim.step()  # 更新权重
+
+            watch_loss.append(loss.item())
+        # print(f"=========\n第{epoch + 1}轮平均loss:{np.mean(watch_loss):.4f}")
+        print(f"=========\n第%d轮平均loss:%.4f" % (epoch + 1, np.mean(watch_loss)))
+        acc = evaluate(model, vocab, sentence_length)  # 测试本轮模型结果
+        log.append([acc, np.mean(watch_loss)])
+
+    # 保存模型
+    torch.save(model.state_dict(), "mRNN_model.pth")
+    # 保存词表
+    writer = open("mRNN_vocab.json", "w", encoding="utf8")
+    writer.write(json.dumps(vocab, ensure_ascii=False, indent=2))
+    writer.close()
+    return
+
+
+# 使用训练好的模型做预测
+def predict(model_path, vocab_path, input_strings):
+    char_dim = 50  # 每个字的维度
+    sentence_length = 10  # 样本文本长度
+    vocab = json.load(open(vocab_path, "r", encoding="utf8"))  # 加载字符表
+    model = build_model(vocab, char_dim, sentence_length)  # 建立模型
+    model.load_state_dict(torch.load(model_path, weights_only=True))  # 加载训练好的权重
+
+    print("****************开始测试****************")
+    # 处理输入，确保长度一致
+    processed_inputs = []
+    for input_string in input_strings:
+        # 截断或填充到固定长度
+        if len(input_string) > sentence_length:
+            input_string = input_string[:sentence_length]
+        else:
+            input_string = input_string + ' ' * (sentence_length - len(input_string))
+
+        encoded = [vocab.get(char, vocab['unk']) for char in input_string]
+        processed_inputs.append(encoded)
+
+    model.eval()  # 测试模式
+    with torch.no_grad():  # 不计算梯度
+        result = model.forward(torch.LongTensor(processed_inputs))  # 模型预测
+    for i, input_string in enumerate(input_strings):
+        predictions = result[i]
+        # 找到预测为特定字符的位置（概率>0.5）
+        char_positions = []
+        for pos, prob in enumerate(predictions[:len(input_string.strip())]):
+            if prob > 0.5:
+                char_positions.append(pos)
+
+        print(f"输入：{input_string}")
+        print(f"预测概率：{[f'{p:.4f}' for p in predictions[:len(input_string.strip())]]}")
+        print(f"特定字符位置：{char_positions}")
+        # 显示实际位置作为对比
+        actual_positions = [pos for pos, char in enumerate(input_string) if char in "ABC"]
+        print(f"实际字符位置：{actual_positions}")
+        print(f"预测结果：{True if actual_positions == char_positions else False}")
+        print("-" * 40)
+
+
+if __name__ == "__main__":
+    main()
+    test_strings = ["fnvfABCe02",
+                    "4BwzACxdfg",
+                    "w23jrqwdeg",
+                    "nAAkwww203",
+                    "HJJ0gh!9oa",
+                    "你OK12jklji",
+                    "AAABBBCCCA",
+                    "!!!???***@"]
+    predict("mRNN_model.pth", "mRNN_vocab.json", test_strings)
