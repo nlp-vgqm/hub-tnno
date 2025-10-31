@@ -1,4 +1,4 @@
-D:\miniconda3>conda list
+d:\>conda list
 # packages in environment at D:\miniconda3:
 #
 # Name                    Version                   Build  Channel
@@ -82,3 +82,5 @@ yaml-cpp                  0.8.0                hd77b12b_1
 zlib                      1.2.13               h8cc25b3_1
 zstandard                 0.23.0          py312h4fc1ca9_0
 zstd                      1.5.6                h8880b57_0
+
+d:\>
