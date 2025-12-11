@@ -1,0 +1,342 @@
+import time
+import jieba
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import pandas as pd
+import numpy as np
+
+from collections import Counter
+from torch.utils.data import DataLoader, TensorDataset
+from torch.optim import Adam, AdamW
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.metrics import accuracy_score
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+
+df = pd.read_csv("文本分类练习.csv")
+X = df["review"]
+y = df["label"]
+
+label_encoder = LabelEncoder()
+y_encoded = label_encoder.fit_transform(y)
+
+X_train, X_val, y_train, y_val = train_test_split(
+    X, y_encoded, test_size=0.2, random_state=42
+)
+
+def jieba_tokenizer(text):
+    return list(jieba.cut(text))
+
+X_train_tokenized = [jieba_tokenizer(t) for t in X_train]
+X_val_tokenized = [jieba_tokenizer(t) for t in X_val]
+
+counter = Counter([w for sent in X_train_tokenized for w in sent])
+vocab = {w: i + 2 for i, (w, _) in enumerate(counter.most_common())}
+vocab["<unk>"] = 1
+vocab["<pad>"] = 0
+
+def text_to_ids(tokens, vocab):
+    return [vocab.get(w, vocab["<unk>"]) for w in tokens]
+
+X_train_ids = [text_to_ids(s, vocab) for s in X_train_tokenized]
+X_val_ids = [text_to_ids(s, vocab) for s in X_val_tokenized]
+
+max_len = max(len(s) for s in X_train_ids)
+X_train_pad = [s + [0] * (max_len - len(s)) for s in X_train_ids]
+X_val_pad = [s + [0] * (max_len - len(s)) for s in X_val_ids]
+
+X_train_tensor = torch.tensor(X_train_pad, dtype=torch.long)
+X_val_tensor = torch.tensor(X_val_pad, dtype=torch.long)
+y_train_tensor = torch.tensor(y_train, dtype=torch.long)
+y_val_tensor = torch.tensor(y_val, dtype=torch.long)
+
+train_ds = TensorDataset(X_train_tensor, y_train_tensor)
+val_ds = TensorDataset(X_val_tensor, y_val_tensor)
+
+train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
+val_loader = DataLoader(val_ds, batch_size=64, shuffle=False)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("using device:", device)
+
+def train_naive_bayes():
+    vectorizer = CountVectorizer(tokenizer=jieba_tokenizer)
+    X_train_vec = vectorizer.fit_transform(X_train)
+    X_val_vec = vectorizer.transform(X_val)
+
+    clf = MultinomialNB()
+    clf.fit(X_train_vec, y_train)
+
+    y_pred_val = clf.predict(X_val_vec)
+    acc = accuracy_score(y_val, y_pred_val)
+
+    n = min(100, X_val_vec.shape[0])
+    X_100 = X_val_vec[:n]
+    t0 = time.time()
+    _ = clf.predict(X_100)
+    t_cost = time.time() - t0
+
+    print(f"[NaiveBayes] acc={acc:.4f}, time_100={t_cost:.6f}s")
+    return acc, t_cost
+
+class LSTMModel(nn.Module):
+    def __init__(self, vocab_size, embed_size, hidden_size, num_classes):
+        super().__init__()
+        self.embed = nn.Embedding(vocab_size, embed_size)
+        self.lstm = nn.LSTM(embed_size, hidden_size, batch_first=True)
+        self.fc = nn.Linear(hidden_size, num_classes)
+
+    def forward(self, x):
+        x = self.embed(x)
+        _, (h, _) = self.lstm(x)
+        out = self.fc(h[-1])
+        return out
+
+def train_lstm():
+    model = LSTMModel(len(vocab), 128, 64, 2).to(device)
+    opt = Adam(model.parameters(), lr=1e-3)
+    criterion = nn.CrossEntropyLoss()
+
+    model.train()
+    for epoch in range(12):
+        total_loss = 0.0
+        for i, (xb, yb) in enumerate(train_loader):
+            xb = xb.to(device)
+            yb = yb.to(device)
+            opt.zero_grad()
+            out = model(xb)
+            loss = criterion(out, yb)
+            loss.backward()
+            opt.step()
+            total_loss += loss.item()
+        print(f"[LSTM] epoch {epoch+1}/12, loss={total_loss/len(train_loader):.4f}")
+
+    model.eval()
+    preds = []
+    sample_inp = None
+    sample_out = None
+    with torch.no_grad():
+        for xb, yb in val_loader:
+            xb = xb.to(device)
+            out = model(xb)
+            _, p = torch.max(out, 1)
+            preds.extend(p.cpu().numpy())
+            if sample_inp is None:
+                sample_inp = xb[:3].cpu().numpy()
+                sample_out = p[:3].cpu().numpy()
+
+    acc = accuracy_score(y_val, preds)
+    print("[LSTM] sample input ids:\n", sample_inp)
+    print("[LSTM] sample preds:\n", sample_out)
+    print(f"[LSTM] acc={acc:.4f}")
+
+    n = min(100, X_val_tensor.shape[0])
+    x_100 = X_val_tensor[:n].to(device)
+    t0 = time.time()
+    with torch.no_grad():
+        _ = model(x_100)
+    t_cost = time.time() - t0
+    print(f"[LSTM] time_100={t_cost:.6f}s")
+
+    return acc, t_cost
+
+class TextCNN(nn.Module):
+    def __init__(self, vocab_size, embed_size, num_filters, filter_sizes, num_classes):
+        super().__init__()
+        self.embed = nn.Embedding(vocab_size, embed_size)
+        self.convs = nn.ModuleList(
+            [nn.Conv1d(embed_size, num_filters, k) for k in filter_sizes]
+        )
+        self.fc = nn.Linear(num_filters * len(filter_sizes), num_classes)
+
+    def forward(self, x):
+        x = self.embed(x).transpose(1, 2)
+        convs = [F.relu(conv(x)) for conv in self.convs]
+        pools = [F.max_pool1d(c, c.size(2)).squeeze(2) for c in convs]
+        cat = torch.cat(pools, dim=1)
+        out = self.fc(cat)
+        return out
+
+def train_textcnn():
+    model = TextCNN(len(vocab), 128, 64, [3, 4, 5], 2).to(device)
+    opt = Adam(model.parameters(), lr=1e-3)
+    criterion = nn.CrossEntropyLoss()
+
+    model.train()
+    for epoch in range(10):
+        total_loss = 0.0
+        for i, (xb, yb) in enumerate(train_loader):
+            xb = xb.to(device)
+            yb = yb.to(device)
+            opt.zero_grad()
+            out = model(xb)
+            loss = criterion(out, yb)
+            loss.backward()
+            opt.step()
+            total_loss += loss.item()
+        print(f"[TextCNN] epoch {epoch+1}/10, loss={total_loss/len(train_loader):.4f}")
+
+    model.eval()
+    preds = []
+    sample_inp = None
+    sample_out = None
+    with torch.no_grad():
+        for xb, yb in val_loader:
+            xb = xb.to(device)
+            out = model(xb)
+            _, p = torch.max(out, 1)
+            preds.extend(p.cpu().numpy())
+            if sample_inp is None:
+                sample_inp = xb[:3].cpu().numpy()
+                sample_out = p[:3].cpu().numpy()
+
+    acc = accuracy_score(y_val, preds)
+    print("[TextCNN] sample input ids:\n", sample_inp)
+    print("[TextCNN] sample preds:\n", sample_out)
+    print(f"[TextCNN] acc={acc:.4f}")
+
+    n = min(100, X_val_tensor.shape[0])
+    x_100 = X_val_tensor[:n].to(device)
+    t0 = time.time()
+    with torch.no_grad():
+        _ = model(x_100)
+    t_cost = time.time() - t0
+    print(f"[TextCNN] time_100={t_cost:.6f}s")
+
+    return acc, t_cost
+
+def train_bert():
+    bert_path = r"E:\pretrain_models\bert-base-chinese"
+
+    tokenizer = AutoTokenizer.from_pretrained(bert_path)
+
+    enc_train = tokenizer(
+        list(X_train),
+        padding=True,
+        truncation=True,
+        max_length=64,
+        return_tensors="pt"
+    )
+    enc_val = tokenizer(
+        list(X_val),
+        padding=True,
+        truncation=True,
+        max_length=64,
+        return_tensors="pt"
+    )
+
+    train_ids = enc_train["input_ids"]
+    train_mask = enc_train["attention_mask"]
+    val_ids = enc_val["input_ids"]
+    val_mask = enc_val["attention_mask"]
+
+    y_train_t = torch.tensor(y_train, dtype=torch.long)
+    y_val_t = torch.tensor(y_val, dtype=torch.long)
+
+    train_ds_bert = TensorDataset(train_ids, train_mask, y_train_t)
+    val_ds_bert = TensorDataset(val_ids, val_mask, y_val_t)
+
+    train_loader_bert = DataLoader(train_ds_bert, batch_size=16, shuffle=True)
+    val_loader_bert = DataLoader(val_ds_bert, batch_size=32, shuffle=False)
+
+    model = AutoModelForSequenceClassification.from_pretrained(bert_path).to(device)
+
+    opt = AdamW(model.parameters(), lr=2e-5)
+
+    for epoch in range(3):
+        model.train()
+        total_loss = 0.0
+        for batch in train_loader_bert:
+            input_ids, attn_mask, labels = [b.to(device) for b in batch]
+            opt.zero_grad()
+            out = model(
+                input_ids=input_ids,
+                attention_mask=attn_mask,
+                labels=labels
+            )
+            loss = out.loss
+            loss.backward()
+            opt.step()
+            total_loss += loss.item()
+        print(f"[BERT] epoch {epoch+1}/3, loss={total_loss/len(train_loader_bert):.4f}")
+
+    model.eval()
+    preds = []
+    with torch.no_grad():
+        for batch in val_loader_bert:
+            input_ids, attn_mask, labels = [b.to(device) for b in batch]
+            out = model(
+                input_ids=input_ids,
+                attention_mask=attn_mask
+            )
+            logits = out.logits
+            p = torch.argmax(logits, dim=-1)
+            preds.extend(p.cpu().numpy())
+
+    acc = accuracy_score(y_val, preds)
+    print(f"[BERT] acc={acc:.4f}")
+
+    n = min(100, len(X_val))
+    enc_100 = tokenizer(
+        list(X_val)[:n],
+        padding=True,
+        truncation=True,
+        max_length=64,
+        return_tensors="pt"
+    )
+    ids_100 = enc_100["input_ids"].to(device)
+    mask_100 = enc_100["attention_mask"].to(device)
+
+    t0 = time.time()
+    with torch.no_grad():
+        _ = model(input_ids=ids_100, attention_mask=mask_100)
+    t_cost = time.time() - t0
+    print(f"[BERT] time_100={t_cost:.6f}s")
+
+    sample_texts = list(X_val)[:3]
+    enc_sample = tokenizer(
+        sample_texts,
+        padding=True,
+        truncation=True,
+        max_length=64,
+        return_tensors="pt"
+    )
+    with torch.no_grad():
+        out_s = model(
+            input_ids=enc_sample["input_ids"].to(device),
+            attention_mask=enc_sample["attention_mask"].to(device)
+        )
+        sample_preds = torch.argmax(out_s.logits, dim=-1).cpu().numpy()
+
+    print("[BERT] sample texts + preds:")
+    for t, p in zip(sample_texts, sample_preds):
+        print(" ", t, "->", int(p))
+
+    return acc, t_cost
+
+results = []
+
+acc_nb, t_nb = train_naive_bayes()
+results.append(["NaiveBayes", "N/A", "N/A", acc_nb, t_nb])
+
+acc_lstm, t_lstm = train_lstm()
+results.append(["LSTM", "1e-3", "64", acc_lstm, t_lstm])
+
+acc_cnn, t_cnn = train_textcnn()
+results.append(["TextCNN", "1e-3", "64", acc_cnn, t_cnn])
+
+acc_bert, t_bert = train_bert()
+results.append(["BERT-base-chinese", "2e-5", "768", acc_bert, t_bert])
+
+results_df = pd.DataFrame(
+    results,
+    columns=["Model", "Learning_Rate", "Hidden_Size", "Accuracy", "Time_Predict_100"]
+)
+
+print("\n===== Final Result Table =====")
+print(results_df)
+
+results_df.to_csv("模型对比结果.csv", index=False)

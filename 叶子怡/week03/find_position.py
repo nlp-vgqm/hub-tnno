@@ -28,11 +28,8 @@ class TorchModel(nn.Module):
     def forward(self, x, y=None):
         x = self.embedding(x)                      #(batch_size, sen_len) -> (batch_size, sen_len, vector_dim)
         # print('enbedding后', x.shape)
-        x = x.transpose(1, 2)                      # (batch_size, sen_len, vector_dim) -> (batch_size, vector_dim, sen_len)
-        # print('transpose后', x.shape)
-        output, x  = self.rnnlayer(x)               #(batch_size, vector_dim, sen_len) -> (1, batch_size, hidden_size)
-        # print('rnn后', x.shape)
-        x = x.squeeze()                               #(1, batch_size, hidden_size) -> (batch_size, hidden_size)
+        output, _ = self.rnnlayer(x)                 # output:(batch_size, sen_len, hidden_size)
+        x = output[:, -1, :]                         # x: (batch_size, hidden_size)
         x = self.fclayer(x)                       #(batch_size, hidden_size) -> (batch_size, sentence_length) 3*20 20*1 -> 3*1
         y_pred = self.fclayer2(x)
         # print('fc后', y_pred.shape)
