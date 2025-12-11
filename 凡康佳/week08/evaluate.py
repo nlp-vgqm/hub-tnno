@@ -17,8 +17,7 @@ class Evaluator:
         self.train_data = load_data(config["train_data_path"], config)
         self.stats_dict = {"correct":0, "wrong":0}  #用于存储测试结果
 
-        self.knwb_to_vector()
-
+        
     #将知识库中的问题向量化，为匹配做准备
     #每轮训练的模型参数不一样，生成的向量也不一样，所以需要每轮测试都重新进行向量化
     def knwb_to_vector(self):
@@ -42,7 +41,8 @@ class Evaluator:
         self.logger.info("开始测试第%d轮模型效果：" % epoch)
         self.stats_dict = {"correct":0, "wrong":0}  #清空前一轮的测试结果
         self.model.eval()
-        
+        self.knwb_to_vector()
+
         for index, batch_data in enumerate(self.valid_data):
             if torch.cuda.is_available():
                 batch_data = [d.cuda() for d in batch_data]
@@ -83,3 +83,4 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
     evaluator = Evaluator(Config, None, logger)
     evaluator.eval(0)
+
