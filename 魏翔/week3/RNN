@@ -1,0 +1,116 @@
+import torch
+import math
+import random
+import torch.nn as nn
+import numpy as np
+import copy
+import json
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader, random_split
+
+
+#读取json文件
+with open('vocab.json', 'r', encoding='utf-8') as file:
+    # 2. 使用json.load()解析文件内容
+    vocab = json.load(file)
+
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+#构造数据
+class MyDataSet(Dataset):
+    def __init__(self, num_sample=1000, num_word=5):
+        self.num_sample = num_sample
+        self.num_word = num_word
+        self.X = []
+        self.Y = []
+        self.generate_date()
+
+    def generate_date(self):
+        for i in range(self.num_sample):
+            s = []
+            tag = -1
+            for j in range(self.num_word):
+                 x = random.choice(list(vocab.values()))
+                 s.append(x)
+                 if x == 11 and tag == -1:
+                     tag = j + 1
+            self.X.append(s)
+            self.Y.append(max(tag, 0))
+
+        self.X = torch.LongTensor(self.X)
+        self.Y = torch.LongTensor(self.Y)
+
+    def __len__(self):
+        return self.num_sample
+
+    def __getitem__(self, index):
+        return self.X[index], self.Y[index]
+
+#数据生成和分割
+num_sample = 1000
+num_word = 8
+total_data = MyDataSet(num_sample, num_word)
+train_set_num = int(0.7 * len(total_data))
+eval_set_num = int(0.3 * len(total_data))
+set1, set2 = random_split(total_data, [train_set_num, eval_set_num])
+train_set = DataLoader(set1, 10, True)
+eval_set = DataLoader(set2, 1, True)
+
+
+#模型构建
+class MyModel(nn.Module):
+    def __init__(self, vocab_num, num_word=5):
+        super(MyModel, self).__init__()
+        self.Emlayer = nn.Embedding(vocab_num, num_word, 0) #变为[batch_size, word_num, word_dim]
+
+        self.rnn = nn.RNN(num_word, 32, batch_first=True)
+        self.f1 = nn.Linear(32, num_word + 1)
+        self.loss = nn.CrossEntropyLoss()
+        self.optimizer = optim.Adam(self.parameters(), 0.001)
+        self.to(device)
+
+    def forward(self, x, y=None):
+        x = self.Emlayer(x)
+        _, h_n = self.rnn(x)  # h_n: [1, batch_size, hidden_size]
+        h_n = h_n.squeeze(0)  # [batch_size, hidden_size]
+
+        # 全连接层
+        y_pred = self.f1(h_n)  # [batch_size, num_word+1]
+
+        if y is not None:
+            return self.loss(y_pred, y)
+        else:
+            return nn.functional.softmax(y_pred)
+
+
+model = MyModel(len(vocab), num_word)
+
+epochs = 100
+
+for epoch in range(epochs):
+    model.train()
+    for index, (x, y) in enumerate(train_set):
+        x, y = x.to(device), y.to(device)
+        loss = model(x, y)
+        model.optimizer.zero_grad()
+        loss.backward()
+        model.optimizer.step()
+        print(f"epoch:{epoch}, loss:{loss.item()}")
+# model.load_state_dict(torch.load("rnn_model.pth"))
+model.eval()
+correct = 0
+total = 0
+with torch.no_grad():
+    for x, y in eval_set:
+        x, y = x.to(device), y.to(device)
+        outputs = model(x)
+        if torch.argmax(outputs) == y:
+            correct += 1
+        total += 1
+
+
+print(f"准确率：{correct / total * 100}%")
+# 保存模型
+torch.save(model.state_dict(), "rnn_model.pth")
+print("训练完成，模型已保存")

@@ -1,0 +1,5 @@
+model	batch_size	epochs	lr	accuracy	loss
+bert-base-chinese	16	3	0.0001	0.875	0.297554
+RNN	16	3	0.001	0.75	0.576532781
+LSTM	16	3	0.001	0.8125	0.305897087
+GRU	16	3	0.001	0.881367	0.023199724

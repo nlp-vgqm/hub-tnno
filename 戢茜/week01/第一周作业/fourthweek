@@ -1,0 +1,54 @@
+
+
+
+
+
+
+def all_cut(dict_list,sentence):   #sentence是一个字符串
+    result=[]
+    if len(sentence)==1: #如果这个字在字典中的话，则返回这个字的列表，否则返回空列表
+        tem_list=[]
+        if sentence in dict_list:
+            tem_list=[sentence]    #每一个结果都是一个字符列表
+            result.append(tem_list)
+        return result
+    elif len(sentence)==2:
+        tem_list=[]
+        if sentence in dict_list:
+            tem_list=[sentence]     #第一种情况，如果sentence就在字典中，则把这个sentence元素当做一个列表，放入result中
+            result.append(tem_list)
+        if sentence[0] in dict_list and sentence[1] in dict_list:    #第二种情况，如果sentence中每个字符都在字典中
+            tem_list=[sentence[0]]+[sentence[1]]  #则把sentence中每个元素变成一个列表，然后赋给tem_list，最后结果放入result中
+            result.append(tem_list)
+        return result
+    else:
+        tem_list=[]
+        for i in Dict_list:
+            if sentence[0] in i and (len(i)==1 or i.replace(sentence[0],'') in sentence):   #找到包含第一个字符的所有的子串，且子串在字典中
+                #print(f'{i=}')
+                tem_list=[i]   #先把这个子串记录下来，放入tem_list这个栈中
+                #print(sentence.replace(i,''))
+                if sentence.replace(i,''):   #如果这个子串不是整个sentence，则对sentence剩下的部分求其划分
+                    cut_list=all_cut(Dict_list,sentence.replace(i,''))
+                    #print(f'{cut_list=}')
+                    for j in cut_list:    #拼接时需要取出其中的每一个元素和栈中记录的子串进行拼接
+                        note=tem_list[:]
+                        note+=j
+                        #print(f'{j=},{note=}')
+                        result.append(note)    #把每一种拼接的结果放入result中
+                        #j=[]
+                    #print(f'{result=}')
+                else:        #如果这个子串就是sentence，那就把这个子串放入result中
+                    result.append(tem_list)
+        return result
+
+
+
+
+Dict_list = ['经常','经','常','有','意','见','有意见','意见','见分歧','分歧','分','歧']
+sentence_all='经常有意见分歧'
+result=all_cut(Dict_list,sentence_all)
+for i in result:
+    print(i)
+
+
