@@ -1,0 +1,70 @@
+# -*- coding: utf-8 -*-
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.optim import Adam, SGD
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from transformers import BertModel, BertConfig
+
+
+class GetFirst(nn.Module):
+    def __init__(self):
+        super(GetFirst, self).__init__()
+
+    def forward(self, x):
+        return x[0]
+
+
+class SentenceMatchNetwork(nn.Module):
+    def __init__(self, config):
+        super(SentenceMatchNetwork, self).__init__()
+
+        hidden_size = config["hidden_size"]
+        self.embedding = nn.Embedding(20000, hidden_size)
+
+        self.encoder = nn.Sequential(nn.LSTM(hidden_size, hidden_size, bidirectional=True, batch_first=True),
+                                     GetFirst(),
+                                     nn.ReLU(),
+                                     nn.Linear(hidden_size * 2, hidden_size),
+                                     nn.ReLU(),
+                                     )
+
+        margin = config.get("triplet_margin", 1.0)
+        self.loss = nn.TripletMarginLoss(margin=margin, p=2)
+
+    def forward_encoder(self, input_ids):
+        x = self.embedding(input_ids)
+        x = self.encoder(x)
+        x = nn.MaxPool1d(x.shape[1])(x.transpose(1, 2))
+        x = x.squeeze(-1)
+
+        if x.dim() == 1:
+            x = x.unsqueeze(0)
+
+        return x
+
+    def forward(self, anchor_ids, positive_ids=None, negative_ids=None):
+
+        if positive_ids is None:
+            return self.forward_encoder(anchor_ids)
+
+        else:
+            anchor_vec = self.forward_encoder(anchor_ids)
+            positive_vec = self.forward_encoder(positive_ids)
+            negative_vec = self.forward_encoder(negative_ids)
+
+            return self.loss(anchor_vec, positive_vec, negative_vec)
+
+    def predict_similarity(self, vec1, vec2):
+        similarity = F.cosine_similarity(vec1, vec2, dim=-1)
+        return similarity
+
+
+def choose_optimizer(config, model):
+    optimizer = config["optimizer"]
+    learning_rate = config["learning_rate"]
+    if optimizer == "adam":
+        return Adam(model.parameters(), lr=learning_rate)
+    elif optimizer == "sgd":
+        return SGD(model.parameters(), lr=learning_rate)
