@@ -1,0 +1,5 @@
+2025-12-11 01:40:23,959 - __main__ - INFO - 配置加载完成: ModelConfig(model_path='/Users/apple/Desktop/week08/model_output', train_data_path='/Users/apple/Desktop/week08/train.json', valid_data_path='/Users/apple/Desktop/week08/valid.json', vocab_path='/Users/apple/Desktop/week08/chars.txt', max_length=20, hidden_size=128, embedding_dim=128, vocab_size=5000, dropout=0.5, encoder_type='lstm', epochs=10, batch_size=32, learning_rate=0.001, optimizer='adam', weight_decay=0.0001, margin=0.2, triplet_strategy='random', epoch_data_size=1000, eval_batch_size=64, top_k=1)
+2025-12-11 01:40:23,966 - __main__ - INFO - 训练集大小: 1000
+2025-12-11 01:40:23,966 - __main__ - INFO - 验证集大小: 2
+2025-12-11 01:40:23,966 - __main__ - INFO - 类别数量: 2
+2025-12-11 01:40:24,053 - __main__ - INFO - 模型参数数量: 905,472
