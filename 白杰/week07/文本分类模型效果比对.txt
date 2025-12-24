@@ -1,0 +1,5 @@
+目前bert模型耗时太久，跑不出来，先给出已有的模型结果：
+Model	Learning_Rate	Hidden_Size	acc（验证集）	time (预测 100 条耗时)
+朴素贝叶斯（TF-IDF）	无	无	0.7777	0.0001 秒
+TextCNN	0.001	256	0.6664	0.1965 秒
+BERT-base-chinese（猜测）	2e-5	768	0.85（预估）	1.5 秒（预估）

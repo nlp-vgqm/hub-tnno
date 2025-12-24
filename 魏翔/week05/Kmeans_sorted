@@ -1,0 +1,81 @@
+import gensim
+import math
+import numpy as np
+import jieba
+import torch
+from gensim.models import Word2Vec
+from sklearn.cluster import KMeans
+from collections import defaultdict
+
+
+def load_word2vec_model(path):
+    model = Word2Vec.load(path)
+    return model
+
+
+def load_sentence(path):
+    sentences = set()
+    with open(path, 'r', encoding="utf-8") as f:
+        for line in f:
+            sentence = line.strip()
+            sentences.add(" ".join(jieba.cut(sentence)))
+    print(f"句子数量：", len(sentences))
+    return sentences
+
+
+def sentence_to_vector(sentences, model):
+    vectors = []
+    for sentence in sentences:
+        words = sentence.split()
+        vector = np.zeros(model.vector_size)
+        for word in words:
+            try:
+                vector += model.wv[word]
+            except KeyError:
+                vector += np.zeros(model.vector_size)
+        vectors.append(vector/len(words))
+    return np.array(vectors)
+
+
+def sort_sentences_by_distance(vectors, kmeans, sentences):
+    # 获取聚类中心
+    cluster_centers = kmeans.cluster_centers_
+
+    # 计算每个句子到它所属的聚类中心的欧氏距离
+    sentence_distance_dict = defaultdict(list)
+    for i, sentence in enumerate(sentences):
+        label = kmeans.labels_[i]
+        center = cluster_centers[label]
+        distance = np.linalg.norm(vectors[i] - center)
+
+        sentence_distance_dict[label].append((sentence, distance))
+
+    for label, sentence_distances in sentence_distance_dict.items():
+        # 按照距离从小到大排序
+        sentence_distances.sort(key=lambda x: x[1])  # 按距离排序
+
+        print(f"Cluster {label} sorted by distance:")
+        for i in range(min(10, len(sentence_distances))):
+            print(f"Sentence: {sentence_distances[i][0]}, Distance: {sentence_distances[i][1]:.4f}")
+        print("-" * 50)
+
+
+def main():
+    model = load_word2vec_model("model.w2c")
+    sentences = load_sentence("titles.txt")
+    vectors = sentence_to_vector(sentences, model)
+
+    n_clusters = int(math.sqrt(len(sentences)))
+    print(f"指定聚类数量：{n_clusters}")
+    kmeans = KMeans(n_clusters)
+    kmeans.fit(vectors)
+
+    sentence_label_dict = defaultdict(list)
+    for sentence, label in zip(sentences, kmeans.labels_):
+        sentence_label_dict[label].append(sentence)
+
+    sort_sentences_by_distance(vectors, kmeans, sentences)
+
+
+if __name__ == '__main__':
+    main()

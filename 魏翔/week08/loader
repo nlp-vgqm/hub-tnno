@@ -1,0 +1,119 @@
+# -*- coding: utf-8 -*-
+
+import json
+import re
+import os
+import torch
+import random
+import logging
+from torch.utils.data import Dataset, DataLoader
+from collections import defaultdict
+from transformers import BertTokenizer
+
+logging.getLogger("transformers").setLevel(logging.ERROR)
+
+
+class DataGenerator:
+    def __init__(self, data_path, config):
+        self.config = config
+        self.path = data_path
+        self.tokenizer = load_vocab(config["vocab_path"])
+        self.config["vocab_size"] = len(self.tokenizer.vocab)
+        self.schema = load_schema(config["schema_path"])
+        self.train_data_size = config["epoch_data_size"]
+        self.max_length = config["max_length"]
+        self.data_type = None
+        self.load()
+
+    def load(self):
+        self.data = []
+        self.knwb = defaultdict(list)
+        with open(self.path, encoding="utf8") as f:
+            for line in f:
+                line = json.loads(line)
+                if isinstance(line, dict):
+                    self.data_type = "train"
+                    questions = line["questions"]
+                    label = line["target"]
+                    for question in questions:
+                        self.knwb[self.schema[label]].append(question)
+                else:
+                    self.data_type = "test"
+                    assert isinstance(line, list)
+                    question, label = line
+                    self.data.append([question, torch.LongTensor([self.schema[label]])])
+        return
+
+    def encode_single_sentence(self, text):
+        input_id = self.tokenizer.encode(text,
+                                         truncation='longest_first',
+                                         max_length=self.max_length,
+                                         padding='max_length',
+                                         )
+        return torch.LongTensor(input_id)
+
+    def encode_sentence(self, text1, text2):
+        input_id = self.tokenizer.encode(text1, text2,
+                                         truncation='longest_first',
+                                         max_length=self.max_length,
+                                         padding='max_length',
+                                         )
+        return torch.LongTensor(input_id)
+
+    def __len__(self):
+        if self.data_type == "train":
+            return self.config["epoch_data_size"]
+        else:
+            assert self.data_type == "test", self.data_type
+            return len(self.data)
+
+    def __getitem__(self, index):
+        if self.data_type == "train":
+            return self.random_train_sample()
+        else:
+            return self.data[index]
+
+    def random_train_sample(self):
+        standard_question_index = list(self.knwb.keys())
+
+        while True:
+            p_label = random.choice(standard_question_index)
+            if len(self.knwb[p_label]) >= 2:
+                break
+
+        a, p = random.sample(self.knwb[p_label], 2)
+
+        n_labels = [l for l in standard_question_index if l != p_label]
+        if not n_labels:
+            n = a
+        else:
+            n_label = random.choice(n_labels)
+            n = random.choice(self.knwb[n_label])
+
+        anchor_ids = self.encode_single_sentence(a)
+        positive_ids = self.encode_single_sentence(p)
+        negative_ids = self.encode_single_sentence(n)
+
+        return [anchor_ids, positive_ids, negative_ids]
+
+
+def load_vocab(vocab_path):
+    tokenizer = BertTokenizer(vocab_path)
+    return tokenizer
+
+
+def load_schema(schema_path):
+    with open(schema_path, encoding="utf8") as f:
+        return json.loads(f.read())
+
+
+def load_data(data_path, config, shuffle=True):
+    dg = DataGenerator(data_path, config)
+
+    if dg.data_type == "train":
+        collate_fn = lambda x: [torch.stack(item) for item in tuple(zip(*x))]
+    else:
+        collate_fn = lambda x: list(zip(*x))
+
+    dl = DataLoader(dg, batch_size=config["batch_size"], shuffle=shuffle, collate_fn=collate_fn)
+    return dl
