@@ -14,12 +14,8 @@ class TorchModel(nn.Module):
         super(TorchModel, self).__init__()
         class_num = config["class_num"]
 
-        self.bert_conf = BertConfig.from_pretrained(config["pretrain_model_path"])
-        self.bert_conf.num_hidden_layers = config["num_layers"]
-        self.layer = BertModel(self.bert_conf)
-
-        hidden_size = self.layer.config.hidden_size
-        self.classify = nn.Linear(hidden_size, class_num)
+        self.layer = BertModel.from_pretrained(config["pretrain_model_path"], return_dict=True)
+        self.classify = nn.Linear(self.layer.config.hidden_size, class_num)
         self.crf_layer = CRF(class_num, batch_first=True)
         self.use_crf = config["use_crf"]
         self.loss = torch.nn.CrossEntropyLoss(ignore_index=-1)  #loss采用交叉熵损失
@@ -27,8 +23,8 @@ class TorchModel(nn.Module):
     #当输入真实标签，返回loss值；无真实标签，返回预测值
     def forward(self, x, target=None):
 
-        attention_mask = x.gt(0)
-        x = self.layer(input_ids=x, attention_mask=attention_mask,return_dict=True)      #input shape:(batch_size, sen_len, hidden_size)
+        # attention_mask = x.gt(0)
+        x = self.layer(x)      #input shape:(batch_size, sen_len, hidden_size)
         predict = self.classify(x.last_hidden_state) #ouput:(batch_size, sen_len, num_tags) -> (batch_size * sen_len, num_tags)
         if target is not None:
             if self.use_crf:
