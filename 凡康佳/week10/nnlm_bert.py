@@ -18,7 +18,7 @@ class LanguageModel(nn.Module):
         super(LanguageModel, self).__init__()
         # self.embedding = nn.Embedding(len(vocab), input_dim)
         # self.layer = nn.LSTM(input_dim, input_dim, num_layers=1, batch_first=True)
-        self.encoder=BertModel.from_pretrained(r"E:\python\学习相关\第六周 语言模型\week6 语言模型和预训练\bert-base-chinese",return_dict=False)
+        self.encoder=BertModel.from_pretrained(r"E:\python\学习相关\第六周 语言模型\week6 语言模型和预训练\bert-base-chinese",return_dict=False,attn_implementation='eager')
         self.classify = nn.Linear(768, len(vocab))
         self.dropout = nn.Dropout(0.1)
         self.loss = nn.functional.cross_entropy
@@ -27,9 +27,13 @@ class LanguageModel(nn.Module):
     def forward(self, x, y=None):
         # x = self.embedding(x)       #output shape:(batch_size, sen_len, input_dim)
         # x, _ = self.layer(x)        #output shape:(batch_size, sen_len, input_dim)
-        x,_=self.encoder(x)
+        mask=torch.tril(torch.ones(x.shape[0],x.shape[1], x.shape[1]))
+        mask=mask.cuda()
+        # x=x.masked_fill(mask==0, -1e9)
+        x,_=self.encoder(x,attention_mask=mask)
         y_pred = self.classify(x)   #output shape:(batch_size, sen_len, vocab_size)
         if y is not None:
+            
             return self.loss(y_pred.view(-1, y_pred.shape[-1]), y.view(-1))
         else:
             return torch.softmax(y_pred, dim=-1)
