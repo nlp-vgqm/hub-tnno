@@ -1,0 +1,12 @@
+任务：基于 PyTorch 实现一个简化版 BERT 模型（bert-base-chinese 规格），覆盖核心模块：Embedding 层、多头自注意力、Transformer Encoder 层、Pooler 层，最终验证模型输入输出的正确性。
+
+要求按以下逻辑分步实现（代码需带详细注释，标注维度变化）：
+1. 先定义bert-base-chinese的核心超参数（vocab_size=21128、hidden_size=768、num_heads=12、num_layers=6、max_position_embeddings=512、intermediate_size=3072、dropout=0.1）；
+2. 实现Embedding层：包含词嵌入+位置嵌入+类型嵌入，加和后做LayerNorm（eps=1e-12）+ Dropout；
+3. 实现多头自注意力层：正确拆分/拼接多头（attention_head_size=64），计算注意力分数并归一化，输出投影后保持维度[batch_size, seq_len, 768]；
+4. 实现单个Transformer Encoder层：严格遵循“自注意力+残差+LayerNorm → 前馈网络+残差+LayerNorm”的BERT标准顺序，前馈网络用GELU激活；
+5. 堆叠6层Encoder层，实现BERT Encoder主体；
+6. 实现Pooler层：提取[CLS] token特征，经Linear+Tanh输出句子级向量；
+7. 整合所有模块为完整BertModel类，编写测试代码：构造input_ids=[[2450, 15486, 102, 2110]]，验证sequence_output.shape=[1,4,768]、pooler_output.shape=[1,768]。
+
+最终输出：可直接运行的完整PyTorch代码，包含所有模块、测试逻辑，注释清晰标注每个模块的作用和维度变换。
