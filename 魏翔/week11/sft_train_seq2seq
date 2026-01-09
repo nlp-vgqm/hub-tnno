@@ -1,0 +1,103 @@
+import torch
+from datasets import Dataset
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from trl import SFTTrainer, SFTConfig
+
+MODEL_NAME = "E:/pretrain_models/Qwen2-0.5B-Instruct"
+OUTPUT_DIR = "./output_seq2seq"
+MAX_SEQ_LENGTH = 512
+
+def create_seq2seq_dataset():
+    data = [
+        {"src": "Hello world", "tgt": "你好，世界"},
+        {"src": "Artificial Intelligence is fascinating.", "tgt": "人工智能非常迷人。"},
+        {"src": "Deep learning uses neural networks.", "tgt": "深度学习使用神经网络。"},
+        {"src": "How are you doing today?", "tgt": "你今天过得怎么样？"},
+        {"src": "The weather in Wuhan is hot.", "tgt": "武汉的天气很热。"},
+        {"src": "I am studying computer science.", "tgt": "我正在学习计算机科学。"},
+        {"src": "Large language models are powerful.", "tgt": "大语言模型非常强大。"},
+        {"src": "Python is a great programming language.", "tgt": "Python 是一门很棒的编程语言。"},
+        {"src": "Keep moving forward.", "tgt": "继续前行。"},
+        {"src": "Knowledge is power.", "tgt": "知识就是力量。"}
+    ]
+
+    formatted_data = []
+    for item in data:
+        instruction = f"Translate the following English text to Chinese:\n{item['src']}"
+        text = (
+            f"<|im_start|>user\n{instruction}<|im_end|>\n"
+            f"<|im_start|>assistant\n{item['tgt']}<|im_end|>"
+        )
+        formatted_data.append({"text": text})
+
+    return formatted_data
+
+def load_model_and_tokenizer():
+    print(f"正在加载模型: {MODEL_NAME}")
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_NAME,
+            trust_remote_code=True,
+            torch_dtype=torch.float32,
+            device_map="auto" if torch.cuda.is_available() else None
+        )
+    except OSError:
+        print(f"错误：找不到模型目录 {MODEL_NAME}")
+        exit(1)
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    return model, tokenizer
+
+def main():
+    print("=" * 50)
+    print("开始 Seq2Seq (英译中) 微调训练")
+    print(f"读取模型: {MODEL_NAME}")
+    print("=" * 50)
+
+    model, tokenizer = load_model_and_tokenizer()
+
+    print("\n正在构造训练数据...")
+    train_data = create_seq2seq_dataset()
+    dataset = Dataset.from_list(train_data)
+
+    print(f"训练样本数量: {len(dataset)}")
+    print("数据示例:")
+    print(dataset[0]["text"])
+
+    sft_config = SFTConfig(
+        output_dir=OUTPUT_DIR,
+        num_train_epochs=5,
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=4,
+        learning_rate=2e-5,
+        logging_steps=1,
+        save_steps=50,
+        fp16=False,
+        max_length=MAX_SEQ_LENGTH,
+        dataset_text_field="text",
+        report_to=None
+    )
+
+    trainer = SFTTrainer(
+        model=model,
+        args=sft_config,
+        train_dataset=dataset,
+        processing_class=tokenizer,
+    )
+
+    print("\n开始训练...")
+    trainer.train()
+
+    print(f"\n训练完成，正在保存模型到 {OUTPUT_DIR}")
+    trainer.save_model()
+    tokenizer.save_pretrained(OUTPUT_DIR)
+
+    print("=" * 50)
+    print("训练结束！")
+    print("=" * 50)
+
+if __name__ == "__main__":
+    main()
