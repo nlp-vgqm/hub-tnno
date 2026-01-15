@@ -1,0 +1,166 @@
+# coding:utf8
+
+import torch
+import torch.nn as nn
+import numpy as np
+import random
+import os
+from transformers import BertTokenizer, BertModel
+from torch.utils.data import Dataset, DataLoader
+
+class LanguageModel(nn.Module):
+    def __init__(self, hidden_size, vocab_size, pretrain_model_path):
+        super(LanguageModel, self).__init__()
+        self.bert = BertModel.from_pretrained(pretrain_model_path)
+        self.bert.config.is_decoder = True
+        self.classify = nn.Linear(hidden_size, vocab_size)
+        self.loss = nn.CrossEntropyLoss(ignore_index=-1)
+
+    def forward(self, x, mask=None, y=None):
+        if y is not None:
+            if mask is not None:
+                output = self.bert(x, attention_mask=mask)[0]
+            else:
+                output = self.bert(x)[0]
+
+            y_pred = self.classify(output)
+            return self.loss(y_pred.view(-1, y_pred.shape[-1]), y.view(-1))
+        else:
+            output = self.bert(x)[0]
+            y_pred = self.classify(output)
+            return torch.softmax(y_pred, dim=-1)
+
+class BertDataset(Dataset):
+    def __init__(self, corpus, tokenizer, window_size, epoch_sample_num):
+        self.corpus = corpus
+        self.tokenizer = tokenizer
+        self.window_size = window_size
+        self.epoch_sample_num = epoch_sample_num
+
+    def __len__(self):
+        return self.epoch_sample_num
+
+    def __getitem__(self, item):
+        if len(self.corpus) <= self.window_size:
+            start = 0
+        else:
+            start = random.randint(0, len(self.corpus) - 1 - self.window_size)
+
+        end = start + self.window_size
+        window = self.corpus[start:end]
+        target = self.corpus[start + 1:end + 1]
+
+        encoding = self.tokenizer.encode_plus(
+            window,
+            add_special_tokens=False,
+            padding='max_length',
+            truncation=True,
+            max_length=self.window_size,
+            return_attention_mask=True,
+            return_tensors="pt"
+        )
+
+        x = encoding['input_ids'].squeeze()
+        mask = encoding['attention_mask'].squeeze()
+
+        y = self.tokenizer.encode(
+            target,
+            add_special_tokens=False,
+            padding='max_length',
+            truncation=True,
+            max_length=self.window_size
+        )
+        y = torch.LongTensor(y)
+        y[y == 0] = -1
+
+        return x, mask, y
+
+def load_corpus(path):
+    if not os.path.exists(path):
+        print(f"【错误】找不到语料文件: {path}")
+        return None
+    corpus = ""
+    try:
+        with open(path, encoding="gbk") as f:
+            for line in f: corpus += line.strip()
+    except:
+        with open(path, encoding="utf-8") as f:
+            for line in f: corpus += line.strip()
+    return corpus
+
+def generate_sentence(openings, model, tokenizer, window_size):
+    model.eval()
+    with torch.no_grad():
+        pred_char = ""
+        while pred_char != "\n" and len(openings) <= 100:
+            openings += pred_char
+            x = tokenizer.encode(openings, add_special_tokens=False)
+            if len(x) > window_size:
+                x = x[-window_size:]
+
+            input_seq = torch.LongTensor([x])
+            if torch.cuda.is_available():
+                input_seq = input_seq.cuda()
+
+            outputs = model(input_seq)
+            pred_prob_distribute = outputs[0, -1, :]
+
+            index = sampling_strategy(pred_prob_distribute)
+            pred_char = tokenizer.decode([index])
+    return openings
+
+def sampling_strategy(prob_distribution):
+    if random.random() > 0.1:
+        strategy = "greedy"
+    else:
+        strategy = "sampling"
+
+    if strategy == "greedy":
+        return int(torch.argmax(prob_distribution))
+    elif strategy == "sampling":
+        prob_distribution = prob_distribution.cpu().numpy()
+        prob_distribution = prob_distribution / np.sum(prob_distribution)
+        return np.random.choice(list(range(len(prob_distribution))), p=prob_distribution)
+
+def train(corpus_path, save_weight=True):
+    epoch_num = 20
+    batch_size = 32
+    window_size = 20
+    lr = 1e-5
+
+    pretrain_model_path = r'E:\pretrain_models\bert-base-chinese'
+    if not os.path.exists(pretrain_model_path):
+        pretrain_model_path = 'bert-base-chinese'
+
+    tokenizer = BertTokenizer.from_pretrained(pretrain_model_path)
+    corpus = load_corpus(corpus_path)
+    if not corpus: return
+
+    train_dataset = BertDataset(corpus, tokenizer, window_size, epoch_sample_num=2000)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+    model = LanguageModel(768, tokenizer.vocab_size, pretrain_model_path)
+    if torch.cuda.is_available():
+        model = model.cuda()
+
+    optim = torch.optim.Adam(model.parameters(), lr=lr)
+
+    for epoch in range(epoch_num):
+        model.train()
+        watch_loss = []
+        for x, mask, y in train_loader:
+            if torch.cuda.is_available():
+                x, mask, y = x.cuda(), mask.cuda(), y.cuda()
+
+            optim.zero_grad()
+            loss = model(x, mask, y)
+            loss.backward()
+            optim.step()
+            watch_loss.append(loss.item())
+
+        print("=========\n第%d轮平均loss:%f" % (epoch + 1, np.mean(watch_loss)))
+        print(generate_sentence("让他在半年之前，", model, tokenizer, window_size))
+        print(generate_sentence("李慕站在山路上，", model, tokenizer, window_size))
+
+if __name__ == "__main__":
+    train(r"E:\课程资料\week10 文本生成问题\lstm语言模型生成文本\corpus.txt", False)
