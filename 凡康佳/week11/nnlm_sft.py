@@ -87,7 +87,7 @@ def build_sample(tokenizer, corpus,window_size):
     prompt=tokenizer.encode(corpus[0],add_special_tokens=False)
 
     answer=tokenizer.encode(corpus[1][:window_size],add_special_tokens=False)
-    answer=answer[:window_size-len(answer)]
+    answer=answer[:window_size-len(prompt)]
     if len(prompt)+len(answer)<window_size:
         answer=answer+[tokenizer.pad_token_id]*(window_size-len(answer)-len(prompt))
     
@@ -121,56 +121,32 @@ def build_model(vocab, char_dim):
     return model
 
 #文本生成测试代码
-def generate_sentence(openings, model, vocab, window_size, tokenizer):
-    reverse_vocab = dict((y, x) for x, y in vocab.items())
-    original_prompt = openings
-    generated = ""
-    
-    forbidden_ids = {
-        tokenizer.pad_token_id,
-        tokenizer.cls_token_id,
-        tokenizer.sep_token_id,
-        tokenizer.unk_token_id
-    }
-
+def generate_sentence(openings, model, tokenizer, max_tokens=50):
     model.eval()
+    input_ids = tokenizer.encode(openings, add_special_tokens=True)
+    
     with torch.no_grad():
-        while len(generated) < 30:  # 最多生成30字
-            current_text = original_prompt + generated
-            input_ids = tokenizer.encode(current_text, add_special_tokens=True)
-            if len(input_ids) > window_size:
-                break
-
-            prompt_len_val = len(current_text)
+        while len(input_ids) < max_tokens:
             x = torch.LongTensor([input_ids]).cuda() if torch.cuda.is_available() else torch.LongTensor([input_ids])
-            prompt_len = [prompt_len_val]
-
-            logits = model(prompt_len, x)[0][-1]  # 最后一个位置的预测
-            index = sampling_strategy(logits, forbidden_ids)
-            char = reverse_vocab.get(index, "[UNK]")
-            if char in ["[PAD]", "[SEP]", "[CLS]", "[UNK]"] or char == "":
+            logits = model(None, x)[0, -1, :]  # 假设模型返回 (batch, seq, vocab)
+            next_id = sampling_strategy(logits)  # 返回 int
+            
+            if next_id in {tokenizer.pad_token_id, tokenizer.eos_token_id}:
                 break
-            generated += char
-    return original_prompt + generated
+            input_ids.append(next_id)
+    
+    return tokenizer.decode(input_ids, skip_special_tokens=True)
 
-def sampling_strategy(prob_distribution, forbidden_ids=None, temperature=0.9):
-    if forbidden_ids:
-        prob_distribution = prob_distribution.clone()
-        prob_distribution[list(forbidden_ids)] = 0
-        if prob_distribution.sum() == 0:
-            prob_distribution = torch.ones_like(prob_distribution)
-        prob_distribution = prob_distribution / prob_distribution.sum()
-
-    # 加 temperature
-    prob_distribution = torch.pow(prob_distribution, 1.0 / temperature)
-    prob_distribution = prob_distribution / prob_distribution.sum()
-
-    if random.random() > 0.3:  # 70% sampling, 30% greedy
-        return int(torch.argmax(prob_distribution))
+def sampling_strategy(prob_distribution):
+    if random.random() > 0.1:
+        strategy = "greedy"
     else:
+        strategy = "sampling"
+    if strategy == "greedy":
+        return int(torch.argmax(prob_distribution))
+    elif strategy == "sampling":
         prob_distribution = prob_distribution.cpu().numpy()
-        return np.random.choice(len(prob_distribution), p=prob_distribution)
-
+        return np.random.choice(list(range(len(prob_distribution))), p=prob_distribution)
 
 #计算文本ppl
 def calc_perplexity(sentence, model, vocab, window_size):
@@ -194,8 +170,8 @@ def calc_perplexity(sentence, model, vocab, window_size):
 
 def train(corpus_path, save_weight=True):
     epoch_num = 20        #训练轮数
-    batch_size = 100       #每次训练样本个数
-    train_sample = 50000   #每轮训练总共训练的样本总数
+    batch_size = 32       #每次训练样本个数
+    train_sample = 640   #每轮训练总共训练的样本总数
     char_dim = 256        #每个字的维度
     window_size = 50       #样本文本长度
     vocab = build_vocab(r"E:\python\学习相关\第六周 语言模型\week6 语言模型和预训练\bert-base-chinese\vocab.txt")       #建立字表
@@ -220,8 +196,8 @@ def train(corpus_path, save_weight=True):
                 optim.step()         #更新权重
                 watch_loss.append(loss.item())
         print("=========\n第%d轮平均loss:%f" % (epoch + 1, np.mean(watch_loss)))
-        print(generate_sentence("朝鲜宣布将于4月发射人造卫星", model, vocab, window_size,tokenizer))
-        print(generate_sentence("冰岛女总理将携夫人访华 为该国首对同性结婚伴侣", model, vocab, window_size,tokenizer))
+        print(generate_sentence("朝鲜宣布将于4月发射人造卫星", model, tokenizer))
+        print(generate_sentence("冰岛女总理将携夫人访华 为该国首对同性结婚伴侣", model,tokenizer))
     if not save_weight:
         return
     else:
