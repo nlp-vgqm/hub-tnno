@@ -1,0 +1,11 @@
+	位置编码	transformer结构	多头机制	ff层设计	归一化层选择	激活函数	是否使用bias
+baichuan2-7b	RoPE	串行	传统方式	gated形式	RMSnorm/pre norm	SiLU	无bias
+baichuan2-13b	Alibi	串行	传统方式	gated形式	RMSnorm/pre norm	SiLU	无bias
+chatglm2	RoPE	串行	multi query	gated形式	RMSnorm/pre norm	SiLU	qkv有bias，其他线性层无bias
+llama2	RoPE	串行	multi query	gated形式	RMSnorm/pre norm	SiLU	无bias
+moss	RoPE	平行	传统方式	传统方式	LayerNorm	gelu_new	sa无bias, ff有bias
+ByT5	绝对位置嵌入	串行	传统方式	传统方式	LayerNorm	GELU	线性层均使用bias
+DeepSeek V3	ROPE	串行	multi query	gated形式	RMSnorm/pre norm	SiLU	多数线性层无bias
+Qwen3	ROPE	串行	multi query	gated形式	RMSnorm/pre norm	SiLU	无bias
+T5	绝对位置嵌入	串行	传统方式	传统方式	LayerNorm	GELU	线性层均使用bias
+SEW	相对位置编码	串行	传统方式	传统方式	LayerNorm	gelu_new	sa无bias, ff有bias
