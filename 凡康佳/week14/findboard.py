@@ -279,7 +279,7 @@ if __name__ == "__main__":
     # user_query = "我想找一个最便宜的开发板"
     # user_query = "我有图像识别的需求，帮我找到最合适的开发板"
     user_query = "我想知道香橙派RV2和香橙派RS2有什么区别"
-    api_key = "sk-6d2a992894fb4ccca207bec93391b38f"
+    api_key = ""
     model = "qwen-plus"
 
     result = run_agent(user_query, api_key, model)
