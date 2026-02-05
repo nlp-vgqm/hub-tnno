@@ -1,0 +1,74 @@
+import sys
+import os
+
+def bpe(str,vocab_maxlen:int):
+    #bpe算法实际是生成新的词表
+    str_list=list(str)
+    vocab_new={}
+    num=0
+    #先生成新词表
+    while vocab_maxlen-num > 0:
+        count={}
+        for pair in zip(str_list[:-1],str_list[1:]):
+            count[pair]=count.get(pair,0)+1    #只要这个pair出现过一次，计数就加1。没有出现过，则从0开始计数
+        print(count)
+        count = sorted(count.items(),key=lambda x:x[1],reverse=True)
+        print(count)
+        max_pair,max_count = count[0]
+        if max_count <= 1:
+            break
+        else:
+            num+=1
+            vocab_new[max_pair]=256+num
+        print(max_pair,max_count)
+        print(vocab_new)
+        j=0
+        #同时进行分词，两两合成，生成新的字符串序列
+        while j < len(str_list)-1:
+            if str_list[j] == max_pair[0] and str_list[j+1] == max_pair[1]:
+                str_list[j]=max_pair
+                del str_list[j+1]
+                print(str_list)
+            j += 1
+    return str_list,vocab_new
+
+#编码
+def encoder(words,vocab):
+    words_encode = []
+    for word in words:
+        if isinstance(word, tuple):
+            word_encode = vocab.get(word)
+        else:
+            word_encode = int.from_bytes(word.encode('utf-8'))
+        words_encode.append(word_encode)
+    return words_encode
+
+
+
+if __name__=='__main__':
+    path= r'D:\BaiduNetdiskDownload\第十五周 大模型多模态相关知识\week15 大语言模型多模态相关\week15 大语言模型多模态相关\bpe\languages.txt'
+    with open(path,'r',encoding='utf-8') as f:
+        str=f.read()
+    str= str.lower()
+    print(str)
+    words, vocab_new = bpe(str, 10)
+    print(words)
+    print(vocab_new)
+    words_encode = encoder(words, vocab_new)
+    print(words_encode)
+
+    #首先处理大小写。
+    # str='the cat is sitting on the mat'
+    # str= str.lower()
+    # words,vocab_new=bpe(str,5)
+    # print(words)
+    # print(vocab_new)
+    # #words_encode=[vocab_new.get(word,word.encode('utf-8')) for word in words]    #报错，word为tuple时，不能编码
+    # words_encode=encoder(words,vocab_new)
+    # print(words_encode)
+
+
+
+
+
+
