@@ -1,0 +1,3 @@
+	位置编码	transformer结构	多头机制	ff层设计	归一化层选择	激活函数	是否使用bias
+llama2	RoPE	串行	group query	gated形式	RMSnorm/pre norm	SiLU	无bias
+qwen	RoPE	串行	传统方式	gated形式	RMSnorm/pre norm	SiLU	qkv有bias，其他线性层无bias
