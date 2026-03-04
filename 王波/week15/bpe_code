@@ -1,0 +1,490 @@
+import re
+import collections
+import tqdm
+from typing import List, Dict, Tuple
+
+
+class BPETokenizer:
+    def __init__(self, vocab_size: int = 10000):
+        """
+        初始化BPE分词器
+
+        Args:
+            vocab_size: 目标词汇表大小
+        """
+        self.vocab_size = vocab_size
+        self.vocab = {}
+        self.merges = {}
+        self.special_tokens = {}
+
+    def train(self, file_path: str, verbose: bool = True, encoding: str = None):
+        """
+        训练BPE分词器
+
+        Args:
+            file_path: 语料文件路径
+            verbose: 是否显示训练进度
+            encoding: 文件编码，如果为None则自动检测
+        """
+        # 1. 读取语料（支持多种编码）
+        text = self._read_file_with_encoding(file_path, encoding)
+
+        if verbose:
+            print(f"读取文件成功，文本长度: {len(text)} 字符")
+
+        # 2. 预处理：将文本拆分为单词并添加结束符
+        words = self._preprocess(text)
+
+        if verbose:
+            print(f"预处理完成，单词数量: {len(words)}")
+
+        # 3. 将每个单词拆分为字符序列
+        word_freqs = collections.Counter(words)
+
+        # 将单词转换为字符序列（用空格分隔）
+        word_freqs_split = {}
+        for word, freq in word_freqs.items():
+            # 将单词拆分为字符，并在字符间添加空格
+            chars = ' '.join(list(word))
+            word_freqs_split[chars] = freq
+
+        # 4. 初始化词汇表（字符级别）
+        vocab = self._initialize_vocab(word_freqs_split)
+
+        if verbose:
+            print(f"初始词汇表大小: {len(vocab)}")
+
+        # 5. 执行BPE合并
+        merges = {}
+        num_merges = self.vocab_size - len(vocab)
+
+        if num_merges <= 0:
+            if verbose:
+                print(f"目标词汇表大小 {self.vocab_size} 小于初始词汇表大小 {len(vocab)}，跳过合并")
+            self.vocab = vocab
+            self.merges = merges
+            return
+
+        if verbose:
+            print(f"开始BPE训练，目标合并次数: {num_merges}")
+
+        for i in tqdm.tqdm(range(num_merges), disable=not verbose):
+            # 统计字符对频率
+            pairs = self._get_stats(word_freqs_split)
+
+            if not pairs:
+                if verbose:
+                    print(f"没有更多可合并的字符对，提前停止在第 {i} 次合并")
+                break
+
+            # 找到频率最高的字符对
+            best_pair = max(pairs, key=pairs.get)
+
+            # 执行合并
+            word_freqs_split = self._merge_vocab(best_pair, word_freqs_split)
+
+            # 记录合并操作
+            merges[best_pair] = i
+            vocab[best_pair[0] + best_pair[1]] = i + len(vocab) - len(merges)
+
+            # 可选：打印进度
+            if verbose and (i + 1) % 100 == 0:
+                print(f"已完成 {i + 1} 次合并，当前词汇表大小: {len(vocab)}")
+
+        # 6. 保存结果
+        self.vocab = vocab
+        self.merges = merges
+        self.merges_inverse = {v: k for k, v in merges.items()}
+
+        if verbose:
+            print(f"训练完成！最终词汇表大小: {len(vocab)}")
+
+    def _read_file_with_encoding(self, file_path: str, encoding: str = None) -> str:
+        """
+        尝试用多种编码读取文件
+
+        Args:
+            file_path: 文件路径
+            encoding: 指定编码，如果为None则尝试多种编码
+
+        Returns:
+            文件内容字符串
+        """
+        encodings_to_try = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'big5', 'latin-1']
+
+        if encoding:
+            encodings_to_try = [encoding] + encodings_to_try
+
+        for enc in encodings_to_try:
+            try:
+                with open(file_path, 'r', encoding=enc) as f:
+                    content = f.read()
+                print(f"使用编码 {enc} 成功读取文件")
+                return content
+            except UnicodeDecodeError as e:
+                print(f"编码 {enc} 失败: {e}")
+                continue
+            except Exception as e:
+                print(f"读取文件时出错 (编码 {enc}): {e}")
+                continue
+
+        # 如果所有编码都失败，尝试二进制读取
+        try:
+            with open(file_path, 'rb') as f:
+                raw_content = f.read()
+            # 尝试忽略错误解码
+            return raw_content.decode('utf-8', errors='ignore')
+        except Exception as e:
+            raise ValueError(f"无法用任何编码读取文件 {file_path}: {e}")
+
+    def _preprocess(self, text: str) -> List[str]:
+        """
+        预处理文本，将文本拆分为单词并添加结束符
+        """
+        words = []
+
+        # 使用更简单的分割方式
+        # 按空白字符和常见标点分割
+        import re
+        # 匹配中文字符、字母、数字的连续序列，以及单个标点
+        tokens = re.findall(r'[\u4e00-\u9fff\w]+|[^\u4e00-\u9fff\w\s]', text)
+
+        for token in tokens:
+            if token.strip():  # 非空字符
+                words.append(token + '</w>')
+
+        return words
+
+    def _initialize_vocab(self, word_freqs: Dict[str, int]) -> Dict[str, int]:
+        """
+        初始化词汇表（字符级别）
+        """
+        vocab = {}
+        idx = 0
+
+        # 添加特殊标记
+        special_tokens = ['<unk>', '<pad>', '<s>', '</s>']
+        for token in special_tokens:
+            vocab[token] = idx
+            idx += 1
+            self.special_tokens[token] = idx - 1
+
+        # 收集所有字符
+        chars = set()
+        for word in word_freqs.keys():
+            # 分割单词为字符
+            chars_in_word = word.split()
+            for char in chars_in_word:
+                chars.add(char)
+
+        # 添加字符到词汇表
+        for char in sorted(chars):
+            if char not in vocab:
+                vocab[char] = idx
+                idx += 1
+
+        return vocab
+
+    def _get_stats(self, word_freqs: Dict[str, int]) -> Dict[Tuple[str, str], int]:
+        """
+        统计字符对频率
+        """
+        pairs = collections.defaultdict(int)
+
+        for word, freq in word_freqs.items():
+            symbols = word.split()
+            for i in range(len(symbols) - 1):
+                pair = (symbols[i], symbols[i + 1])
+                pairs[pair] += freq
+
+        return pairs
+
+    def _merge_vocab(self, pair: Tuple[str, str], word_freqs: Dict[str, int]) -> Dict[str, int]:
+        """
+        执行一次合并操作
+        """
+        new_word_freqs = {}
+        first, second = pair
+
+        for word, freq in word_freqs.items():
+            # 将单词拆分为字符列表
+            symbols = word.split()
+            i = 0
+            new_symbols = []
+
+            while i < len(symbols):
+                # 检查是否可以合并
+                if i < len(symbols) - 1 and symbols[i] == first and symbols[i + 1] == second:
+                    new_symbols.append(first + second)
+                    i += 2
+                else:
+                    new_symbols.append(symbols[i])
+                    i += 1
+
+            # 重新组合为字符串
+            new_word = ' '.join(new_symbols)
+            new_word_freqs[new_word] = freq
+
+        return new_word_freqs
+
+    def encode(self, text: str) -> List[int]:
+        """
+        将文本编码为token id序列
+        """
+        # 预处理
+        words = self._preprocess(text)
+
+        tokens = []
+        for word in words:
+            # 将单词拆分为字符
+            chars = list(word.replace('</w>', ''))
+            symbols = chars + ['</w>']
+
+            # 应用所有合并规则
+            while len(symbols) > 1:
+                # 找到最可能合并的字符对
+                pairs = [(symbols[i], symbols[i + 1]) for i in range(len(symbols) - 1)]
+                pair_to_merge = None
+                merge_priority = float('inf')
+
+                for pair in pairs:
+                    if pair in self.merges:
+                        if self.merges[pair] < merge_priority:
+                            merge_priority = self.merges[pair]
+                            pair_to_merge = pair
+
+                if pair_to_merge is None:
+                    break
+
+                # 执行合并
+                new_symbols = []
+                i = 0
+                while i < len(symbols):
+                    if i < len(symbols) - 1 and (symbols[i], symbols[i + 1]) == pair_to_merge:
+                        new_symbols.append(symbols[i] + symbols[i + 1])
+                        i += 2
+                    else:
+                        new_symbols.append(symbols[i])
+                        i += 1
+                symbols = new_symbols
+
+            # 将子词转换为token id
+            for symbol in symbols:
+                if symbol in self.vocab:
+                    tokens.append(self.vocab[symbol])
+                else:
+                    # 使用UNK标记
+                    tokens.append(self.special_tokens.get('<unk>', 0))
+
+        return tokens
+
+    def decode(self, tokens: List[int]) -> str:
+        """
+        将token id序列解码为文本
+        """
+        # 将token id转换回子词
+        idx_to_token = {idx: token for token, idx in self.vocab.items()}
+        symbols = [idx_to_token.get(token, '<unk>') for token in tokens]
+
+        # 合并符号
+        text = ''.join(symbols)
+
+        # 移除结束符并恢复原始文本
+        text = text.replace('</w>', ' ')
+
+        return text.strip()
+
+    def tokenize(self, text: str) -> List[str]:
+        """
+        将文本分词为子词序列
+        """
+        # 预处理
+        words = self._preprocess(text)
+
+        subwords = []
+        for word in words:
+            # 将单词拆分为字符
+            chars = list(word.replace('</w>', ''))
+            symbols = chars + ['</w>']
+
+            # 应用所有合并规则
+            while len(symbols) > 1:
+                # 找到最可能合并的字符对
+                pairs = [(symbols[i], symbols[i + 1]) for i in range(len(symbols) - 1)]
+                pair_to_merge = None
+                merge_priority = float('inf')
+
+                for pair in pairs:
+                    if pair in self.merges:
+                        if self.merges[pair] < merge_priority:
+                            merge_priority = self.merges[pair]
+                            pair_to_merge = pair
+
+                if pair_to_merge is None:
+                    break
+
+                # 执行合并
+                new_symbols = []
+                i = 0
+                while i < len(symbols):
+                    if i < len(symbols) - 1 and (symbols[i], symbols[i + 1]) == pair_to_merge:
+                        new_symbols.append(symbols[i] + symbols[i + 1])
+                        i += 2
+                    else:
+                        new_symbols.append(symbols[i])
+                        i += 1
+                symbols = new_symbols
+
+            # 移除结束符
+            symbols = [token.replace('</w>', '') for token in symbols]
+            subwords.extend(symbols)
+
+        return subwords
+
+    def save(self, filepath: str):
+        """
+        保存分词器
+        """
+        import json
+        # 将元组转换为字符串以便JSON序列化
+        merges_serializable = {f"{k[0]} {k[1]}": v for k, v in self.merges.items()}
+        data = {
+            'vocab_size': self.vocab_size,
+            'vocab': self.vocab,
+            'merges': merges_serializable,
+            'special_tokens': self.special_tokens
+        }
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def load(self, filepath: str):
+        """
+        加载分词器
+        """
+        import json
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        self.vocab_size = data['vocab_size']
+        self.vocab = {k: int(v) for k, v in data['vocab'].items()}
+
+        # 将字符串转换回元组
+        merges = {}
+        for k, v in data['merges'].items():
+            parts = k.split()
+            merges[(parts[0], parts[1])] = v
+        self.merges = merges
+
+        self.special_tokens = data['special_tokens']
+        self.merges_inverse = {v: k for k, v in self.merges.items()}
+
+    def get_vocab_size(self) -> int:
+        """返回词汇表大小"""
+        return len(self.vocab)
+
+    def analyze_corpus(self, file_path: str, encoding: str = None):
+        """
+        分析语料文件，显示基本信息
+        """
+        text = self._read_file_with_encoding(file_path, encoding)
+
+        print("语料分析:")
+        print(f"  文件大小: {len(text)} 字符")
+        print(f"  前100个字符: {text[:100]}...")
+
+        # 统计中文字符比例
+        chinese_chars = re.findall(r'[\u4e00-\u9fff]', text)
+        print(f"  中文字符数量: {len(chinese_chars)}")
+        print(f"  中文字符比例: {len(chinese_chars) / len(text) * 100:.2f}%")
+
+        # 统计不同字符数量
+        unique_chars = set(text)
+        print(f"  不同字符数量: {len(unique_chars)}")
+
+
+def create_sample_corpus():
+    """
+    创建示例语料文件（如果corpus_Chinese.txt不存在）
+    """
+    import os
+    if not os.path.exists('corpus_Chinese.txt'):
+        sample_text = """自然语言处理是人工智能的一个重要领域。
+        深度学习在自然语言处理中发挥着重要作用。
+        中文分词是中文自然语言处理的基础任务。
+        语言模型可以预测下一个词的概率。
+        神经网络在机器翻译中取得了巨大成功。
+        注意力机制让模型能够关注重要信息。
+        预训练模型如BERT和GPT改变了NLP领域。
+        词向量表示将词语映射到高维空间。
+        序列到序列模型用于机器翻译和文本摘要。
+        强化学习可以用于对话系统和文本生成。"""
+
+        with open('corpus_Chinese.txt', 'w', encoding='utf-8') as f:
+            f.write(sample_text)
+        print("已创建示例语料文件: corpus_Chinese.txt")
+
+
+def main():
+    """
+    使用示例
+    """
+    # 创建示例语料文件（如果不存在）
+    # create_sample_corpus()
+
+    # 初始化BPE分词器
+    tokenizer = BPETokenizer(vocab_size=500)
+
+    # 语料文件
+    corpus_file = "corpus_GBK.txt"
+
+    # 分析语料
+    print("分析语料文件...")
+    tokenizer.analyze_corpus(corpus_file)
+
+    # 训练分词器
+    print("\n开始训练BPE分词器...")
+    tokenizer.train(corpus_file, verbose=True)
+
+    # 测试分词
+    test_text = "自然语言处理是一项重要的技术。"
+    print(f"\n测试文本: {test_text}")
+
+    # 分词
+    tokens = tokenizer.tokenize(test_text)
+    print(f"分词结果: {tokens}")
+
+    # 编码
+    token_ids = tokenizer.encode(test_text)
+    print(f"Token IDs: {token_ids}")
+
+    # 解码
+    decoded = tokenizer.decode(token_ids)
+    print(f"解码结果: {decoded}")
+
+    # 查看词汇表大小
+    print(f"\n词汇表大小: {tokenizer.get_vocab_size()}")
+
+    # 查看一些常见的合并规则
+    if tokenizer.merges:
+        print("\n前10个合并规则:")
+        for i, (pair, idx) in enumerate(list(tokenizer.merges.items())[:10]):
+            print(f"  {i + 1}. {pair[0]} + {pair[1]} -> {pair[0] + pair[1]}")
+    else:
+        print("\n没有合并规则（可能语料太小或词汇表已足够）")
+
+    # 保存分词器
+    tokenizer.save('bpe_tokenizer.json')
+    print("\n分词器已保存到 bpe_tokenizer.json")
+
+    # 加载分词器
+    new_tokenizer = BPETokenizer()
+    new_tokenizer.load('bpe_tokenizer.json')
+    print("分词器加载成功！")
+
+    # 用新分词器测试
+    test_ids = new_tokenizer.encode(test_text)
+    print(f"新分词器编码结果: {test_ids}")
+
+
+if __name__ == "__main__":
+    main()

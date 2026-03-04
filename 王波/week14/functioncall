@@ -1,0 +1,255 @@
+tools_1=[
+    {
+        "name": "control_light",
+        "description": "控制智能灯具的开关、亮度和颜色",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "room": {
+                    "type": "string",
+                    "enum": ["living_room", "bedroom", "kitchen", "bathroom", "study"],
+                    "description": "房间名称"
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["turn_on", "turn_off", "toggle"],
+                    "description": "开关动作"
+                },
+                "brightness": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "亮度百分比"
+                },
+                "color": {
+                    "type": "string",
+                    "description": "颜色名称或十六进制代码，例如：red, #FF0000"
+                }
+            },
+            "required": ["room", "action"]
+        }
+    },
+    {
+        "name": "adjust_thermostat",
+        "description": "调节恒温器温度",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "temperature": {
+                    "type": "number",
+                    "minimum": 16,
+                    "maximum": 30,
+                    "description": "目标温度（摄氏度）"
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["cool", "heat", "auto", "off"],
+                    "description": "工作模式"
+                },
+                "schedule": {
+                    "type": "string",
+                    "description": "定时计划，格式：HH:MM"
+                }
+            },
+            "required": ["temperature"]
+        }
+    }
+]
+tools_2=[
+    {
+        "name": "search_products",
+        "description": "搜索电商平台商品",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "keyword": {
+                    "type": "string",
+                    "description": "搜索关键词"
+                },
+                "category": {
+                    "type": "string",
+                    "enum": ["electronics", "clothing", "books", "home", "sports"],
+                    "description": "商品类别"
+                },
+                "min_price": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "最低价格"
+                },
+                "max_price": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "最高价格"
+                },
+                "sort_by": {
+                    "type": "string",
+                    "enum": ["price_asc", "price_desc", "relevance", "rating"],
+                    "description": "排序方式"
+                }
+            },
+            "required": ["keyword"]
+        }
+    },
+    {
+        "name": "add_to_cart",
+        "description": "添加商品到购物车",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "product_id": {
+                    "type": "string",
+                    "description": "商品ID"
+                },
+                "quantity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 99,
+                    "description": "购买数量"
+                },
+                "size": {
+                    "type": "string",
+                    "description": "商品尺寸（如适用）"
+                },
+                "color": {
+                    "type": "string",
+                    "description": "商品颜色（如适用）"
+                }
+            },
+            "required": ["product_id", "quantity"]
+        }
+    }
+]
+tools_3=[
+    {
+        "name": "track_exercise",
+        "description": "记录运动锻炼数据",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "exercise_type": {
+                    "type": "string",
+                    "enum": ["running", "cycling", "swimming", "walking", "gym"],
+                    "description": "运动类型"
+                },
+                "duration": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "持续时间（分钟）"
+                },
+                "calories_burned": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "消耗卡路里"
+                },
+                "distance": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "运动距离（公里）"
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "备注信息"
+                }
+            },
+            "required": ["exercise_type", "duration"]
+        }
+    },
+    {
+        "name": "log_meal",
+        "description": "记录饮食摄入",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "meal_type": {
+                    "type": "string",
+                    "enum": ["breakfast", "lunch", "dinner", "snack"],
+                    "description": "餐食类型"
+                },
+                "food_items": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "食物列表"
+                },
+                "calories": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "总卡路里"
+                },
+                "protein": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "蛋白质（克）"
+                },
+                "carbs": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "碳水化合物（克）"
+                }
+            },
+            "required": ["meal_type", "food_items"]
+        }
+    }
+]
+tools_4=[
+    {
+        "name": "check_stock_price",
+        "description": "查询股票价格信息",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "symbol": {
+                    "type": "string",
+                    "description": "股票代码，例如：AAPL, 000001.SZ"
+                },
+                "timeframe": {
+                    "type": "string",
+                    "enum": ["realtime", "daily", "weekly", "monthly"],
+                    "description": "时间范围"
+                },
+                "indicators": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["open", "high", "low", "close", "volume"]
+                    },
+                    "description": "需要获取的指标"
+                }
+            },
+            "required": ["symbol"]
+        }
+    },
+    {
+        "name": "calculate_loan",
+        "description": "计算贷款还款计划",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "principal": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "贷款本金"
+                },
+                "annual_rate": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "年利率（小数形式）"
+                },
+                "term_years": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 30,
+                    "description": "贷款年限"
+                },
+                "repayment_type": {
+                    "type": "string",
+                    "enum": ["equal_principal", "equal_payment"],
+                    "description": "还款方式：等额本金或等额本息"
+                }
+            },
+            "required": ["principal", "annual_rate", "term_years"]
+        }
+    }
+]

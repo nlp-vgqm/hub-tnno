@@ -1,0 +1,351 @@
+"""
+学术助手Agent示例 - 演示大语言模型的function call能力
+展示从用户输入 -> 工具调用 -> 最终回复的完整流程
+"""
+
+import os
+import json
+from openai import OpenAI
+import datetime
+
+# ==================== 模拟数据库 ====================
+
+# 模拟的学术论文数据库
+MOCK_PAPERS = {
+    "paper_001": {
+        "id": "paper_001",
+        "title": "Attention Is All You Need",
+        "authors": ["Vaswani", "Shazeer", "Parmar"],
+        "year": 2017,
+        "field": "NLP",
+        "citations": 85000,
+        "abstract": "我们提出了一种新的简单网络架构Transformer，完全基于注意力机制..."
+    },
+    "paper_002": {
+        "id": "paper_002",
+        "title": "Deep Residual Learning for Image Recognition",
+        "authors": ["He", "Zhang", "Ren", "Sun"],
+        "year": 2016,
+        "field": "Computer Vision",
+        "citations": 150000,
+        "abstract": "我们提出了残差学习框架，以简化比以前使用的网络深得多的网络的训练..."
+    },
+    "paper_003": {
+        "id": "paper_003",
+        "title": "BERT: Pre-training of Deep Bidirectional Transformers",
+        "authors": ["Devlin", "Chang", "Lee"],
+        "year": 2018,
+        "field": "NLP",
+        "citations": 70000,
+        "abstract": "我们介绍了BERT，一种旨在通过在所有层中联合调节左右上下文来预训练深度双向表示的新语言表示模型..."
+    },
+    "paper_004": {
+        "id": "paper_004",
+        "title": "Generative Adversarial Nets",
+        "authors": ["Goodfellow", "Pouget-Abadie"],
+        "year": 2014,
+        "field": "Generative Models",
+        "citations": 55000,
+        "abstract": "我们提出了一个通过对抗过程估计生成模型的新框架..."
+    }
+}
+
+# ==================== 工具函数定义 ====================
+
+def search_papers(keyword: str):
+    """
+    根据关键词搜索论文
+
+    Args:
+        keyword: 搜索关键词（如 field 或 title片段）
+    """
+    results = []
+    keyword_lower = keyword.lower()
+
+    for p_id, p_data in MOCK_PAPERS.items():
+        if keyword_lower in p_data["title"].lower() or keyword_lower in p_data["field"].lower():
+            results.append({
+                "id": p_id,
+                "title": p_data["title"],
+                "year": p_data["year"],
+                "field": p_data["field"]
+            })
+
+    if not results:
+        return json.dumps({"message": "未找到相关论文"}, ensure_ascii=False)
+
+    return json.dumps(results, ensure_ascii=False)
+
+
+def get_paper_detail(paper_id: str):
+    """
+    获取论文的详细摘要和作者信息
+
+    Args:
+        paper_id: 论文ID
+    """
+    if paper_id in MOCK_PAPERS:
+        return json.dumps(MOCK_PAPERS[paper_id], ensure_ascii=False)
+    else:
+        return json.dumps({"error": "论文ID不存在"}, ensure_ascii=False)
+
+
+def calculate_impact_score(paper_id: str):
+    """
+    计算论文的影响力分数（基于引用量和年份）
+
+    Args:
+        paper_id: 论文ID
+    """
+    if paper_id not in MOCK_PAPERS:
+        return json.dumps({"error": "论文ID不存在"}, ensure_ascii=False)
+
+    paper = MOCK_PAPERS[paper_id]
+    current_year = datetime.datetime.now().year
+    years_since_pub = max(1, current_year - paper["year"])
+
+    # 简化的影响力计算公式：年均引用量
+    avg_citations_per_year = paper["citations"] / years_since_pub
+
+    # 简单的评级逻辑
+    if avg_citations_per_year > 10000:
+        level = "S+ (殿堂级)"
+    elif avg_citations_per_year > 5000:
+        level = "S (顶级)"
+    elif avg_citations_per_year > 1000:
+        level = "A (高引)"
+    else:
+        level = "B (普通)"
+
+    result = {
+        "paper_id": paper_id,
+        "title": paper["title"],
+        "total_citations": paper["citations"],
+        "years_published": years_since_pub,
+        "avg_citations_per_year": int(avg_citations_per_year),
+        "impact_level": level,
+        "analysis_note": f"基于{current_year}年数据计算"
+    }
+
+    return json.dumps(result, ensure_ascii=False)
+
+
+def compare_papers(paper_ids: list):
+    """
+    比较多篇论文的数据（年份、引用量、领域）
+
+    Args:
+        paper_ids: 论文ID列表
+    """
+    comparisons = []
+
+    for pid in paper_ids:
+        if pid in MOCK_PAPERS:
+            p = MOCK_PAPERS[pid]
+            comparisons.append({
+                "title": p["title"],
+                "year": p["year"],
+                "citations": p["citations"],
+                "field": p["field"],
+                "first_author": p["authors"][0]
+            })
+
+    # 按引用量降序排列
+    comparisons.sort(key=lambda x: x["citations"], reverse=True)
+
+    result = {
+        "count": len(comparisons),
+        "comparison_data": comparisons
+    }
+
+    return json.dumps(result, ensure_ascii=False)
+
+
+# ==================== 工具函数的JSON Schema定义 ====================
+
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_papers",
+            "description": "根据关键词搜索学术论文，返回论文ID、标题、年份和领域",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keyword": {
+                        "type": "string",
+                        "description": "搜索关键词，例如：NLP, Transformer, Image"
+                    }
+                },
+                "required": ["keyword"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_paper_detail",
+            "description": "获取特定论文的详细信息，包括摘要、完整作者列表等",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "paper_id": {
+                        "type": "string",
+                        "description": "论文ID，例如：paper_001"
+                    }
+                },
+                "required": ["paper_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate_impact_score",
+            "description": "计算论文的影响力评分和等级，分析其学术价值",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "paper_id": {
+                        "type": "string",
+                        "description": "论文ID"
+                    }
+                },
+                "required": ["paper_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "compare_papers",
+            "description": "对比多篇论文的引用量、年份和领域",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "paper_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "要比较的论文ID列表"
+                    }
+                },
+                "required": ["paper_ids"]
+            }
+        }
+    }
+]
+
+
+# ==================== Agent核心逻辑 ====================
+
+# 工具函数映射
+available_functions = {
+    "search_papers": search_papers,
+    "get_paper_detail": get_paper_detail,
+    "calculate_impact_score": calculate_impact_score,
+    "compare_papers": compare_papers
+}
+
+
+def run_agent(user_query: str, api_key: str = None, model: str = "qwen-plus"):
+    """
+    运行Agent，处理用户查询
+    """
+    # 初始化OpenAI客户端 (此处配置为兼容DashScope)
+    client = OpenAI(
+        api_key=os.getenv("DASHSCOPE_API_KEY", "sk-cc7fea755a3c4711b91da53e1284998c"), # 优先读取环境变量
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    )
+
+    # 初始化对话历史
+    messages = [
+        {
+            "role": "system",
+            "content": """你是一位专业的学术研究助手。你可以：
+1. 搜索相关领域的学术论文
+2. 提供论文的详细摘要和作者信息
+3. 计算和分析论文的学术影响力
+4. 比较不同论文的数据
+
+请根据用户的问题，使用合适的工具来获取信息并给出专业的学术建议。"""
+        },
+        {
+            "role": "user",
+            "content": user_query
+        }
+    ]
+
+    print("\n" + "="*60)
+    print("【用户问题】")
+    print(user_query)
+    print("="*60)
+
+    max_iterations = 5
+    iteration = 0
+
+    while iteration < max_iterations:
+        iteration += 1
+        print(f"\n--- 第 {iteration} 轮Agent思考 ---")
+
+        # 调用大模型
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            tools=tools,
+            tool_choice="auto"
+        )
+
+        response_message = response.choices[0].message
+        messages.append(response_message)
+
+        tool_calls = response_message.tool_calls
+
+        if not tool_calls:
+            print("\n【Agent最终回复】")
+            print(response_message.content)
+            print("="*60)
+            return response_message.content
+
+        print(f"\n【Agent决定调用 {len(tool_calls)} 个工具】")
+
+        for tool_call in tool_calls:
+            function_name = tool_call.function.name
+            function_args = json.loads(tool_call.function.arguments)
+
+            print(f"\n工具名称: {function_name}")
+            print(f"工具参数: {json.dumps(function_args, ensure_ascii=False)}")
+
+            if function_name in available_functions:
+                function_to_call = available_functions[function_name]
+                function_response = function_to_call(**function_args)
+
+                print(f"工具返回: {function_response[:200]}..." if len(function_response) > 200 else f"工具返回: {function_response}")
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "name": function_name,
+                    "content": function_response
+                })
+            else:
+                print(f"错误：未找到工具 {function_name}")
+
+    print("\n【警告】达到最大迭代次数，Agent循环结束")
+    return "抱歉，处理您的请求时遇到了问题。"
+
+
+# ==================== 示例场景 ====================
+
+if __name__ == "__main__":
+
+    # 场景1：搜索论文
+    # run_agent("帮我找几篇关于NLP的论文", model="qwen-plus")
+
+    # 场景2：查询详情
+    # run_agent("我想看看Attention Is All You Need这篇论文的摘要", model="qwen-plus")
+
+    # 场景3：分析影响力（多步调用：搜索 -> 计算）
+    run_agent("帮我分析一下ResNet这篇论文的学术影响力怎么样", model="qwen-plus")
+
+    # 场景4：比较论文
+    # run_agent("比较一下BERT和ResNet这两篇论文的引用情况", model="qwen-plus")
