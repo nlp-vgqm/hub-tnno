@@ -1,0 +1,19 @@
+请输入：你说什么
+{'available_nodes': ['scenario-买衣服_node1', 'scenario-看电影_node1'], 'response': '抱歉，我刚才还没说话呢。'}
+
+抱歉，我刚才还没说话呢。
+===========
+请输入：我要看电影 流浪地球
+{'available_nodes': ['scenario-看电影_node1'], 'response': '你想看几点场', 'query': '我要看电影 流浪地球', 'hit_node': 'scenario-看电影_node1', 'intent_score': 0.5, '#电影名称#': '流浪地球', 'require_slot': '#时间#', 'policy': 'request'}
+
+你想看几点场
+===========
+请输入：12
+{'available_nodes': ['scenario-看电影_node2', 'scenario-看电影_node3'], 'response': '为你找到12点的流浪地球电影', 'query': '12', 'hit_node': 'scenario-看电影_node1', 'intent_score': 0.0, '#电影名称#': '流浪地球', 'require_slot': None, 'policy': 'reply', '#时间#': '12'}
+
+为你找到12点的流浪地球电影
+===========
+请输入：我没听清
+{'available_nodes': ['scenario-看电影_node2', 'scenario-看电影_node3'], 'response': '为你找到12点的流浪地球电影', 'query': '12', 'hit_node': 'scenario-看电影_node1', 'intent_score': 0.0, '#电影名称#': '流浪地球', 'require_slot': None, 'policy': 'reply', '#时间#': '12'}
+
+为你找到12点的流浪地球电影
