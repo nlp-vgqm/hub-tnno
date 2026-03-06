@@ -1,0 +1,54 @@
+请输入：买衣服
+{'available_nodes': ['scenario-买衣服_node1'], 'query': '买衣服', 'hit_node_repeat': False, 'hit_node': 'scenario-买衣服_node1', 'intent_score': 0.6, 'require_slot': '#服装类型#', 'policy': 'request', 'response': '您想买长袖、短袖还是半截袖'}
+
+您想买长袖、短袖还是半截袖
+===========
+请输入：红色m号短袖
+{'available_nodes': ['scenario-买衣服_node2', 'scenario-买衣服_node3', 'scenario-买衣服_node4', 'scenario-买衣服_node0'], 'query': '红色m号短袖', 'hit_node_repeat': False, 'hit_node': 'scenario-买衣服_node1', 'intent_score': 0.0, 'require_slot': None, 'policy': 'reply', 'response': '为您推荐这一款，m号，红色短袖，产品连接：xxx', '#服装类型#': '短袖', '#服装颜色#': '红', '#服装尺寸#': 'm'}
+
+为您推荐这一款，m号，红色短袖，产品连接：xxx
+===========
+请输入：没听清
+{'available_nodes': ['scenario-买衣服_node2', 'scenario-买衣服_node3', 'scenario-买衣服_node4', 'scenario-买衣服_node0'], 'query': '没听清', 'hit_node_repeat': True, 'hit_node': 'scenario-买衣服_node1', 'intent_score': 0.0, 'require_slot': None, 'policy': 'repeat', 'response': '好的，我再说一遍。为您推荐这一款，m号，红色短袖，产品连接：xxx', '#服装类型#': '短袖', '#服装颜色#': '红', '#服装尺寸#': 'm'}
+
+好的，我再说一遍。为您推荐这一款，m号，红色短袖，产品连接：xxx
+===========
+请输入：没听清
+{'available_nodes': ['scenario-买衣服_node2', 'scenario-买衣服_node3', 'scenario-买衣服_node4', 'scenario-买衣服_node0'], 'query': '没听清', 'hit_node_repeat': True, 'hit_node': 'scenario-买衣服_node1', 'intent_score': 0.0, 'require_slot': None, 'policy': 'repeat', 'response': '好的，我再说一遍。为您推荐这一款，m号，红色短袖，产品连接：xxx', '#服装类型#': '短袖', '#服装颜色#': '红', '#服装尺寸#': 'm'}
+
+好的，我再说一遍。为您推荐这一款，m号，红色短袖，产品连接：xxx
+===========
+请输入：我没钱
+{'available_nodes': ['scenario-买衣服_node3', 'scenario-买衣服_node0'], 'query': '我没钱', 'hit_node_repeat': False, 'hit_node': 'scenario-买衣服_node2', 'intent_score': 1.0, 'require_slot': None, 'policy': 'reply', 'response': '没钱你可以选择分期付款', '#服装类型#': '短袖', '#服装颜色#': '红', '#服装尺寸#': 'm'}
+
+没钱你可以选择分期付款
+===========
+请输入：你再说一遍
+{'available_nodes': ['scenario-买衣服_node3', 'scenario-买衣服_node0'], 'query': '你再说一遍', 'hit_node_repeat': True, 'hit_node': 'scenario-买衣服_node2', 'intent_score': 1.0, 'require_slot': None, 'policy': 'repeat', 'response': '好的，我再说一遍。没钱你可以选择分期付款', '#服装类型#': '短袖', '#服装颜色#': '红', '#服装尺寸#': 'm'}
+
+好的，我再说一遍。没钱你可以选择分期付款
+===========
+请输入：你再说一遍
+{'available_nodes': ['scenario-买衣服_node3', 'scenario-买衣服_node0'], 'query': '你再说一遍', 'hit_node_repeat': True, 'hit_node': 'scenario-买衣服_node2', 'intent_score': 1.0, 'require_slot': None, 'policy': 'repeat', 'response': '好的，我再说一遍。没钱你可以选择分期付款', '#服装类型#': '短袖', '#服装颜色#': '红', '#服装尺寸#': 'm'}
+
+好的，我再说一遍。没钱你可以选择分期付款
+===========
+请输入：分3期付款
+{'available_nodes': ['scenario-买衣服_node3'], 'query': '分3期付款', 'hit_node_repeat': False, 'hit_node': 'scenario-买衣服_node3', 'intent_score': 0.5, 'require_slot': '#支付方式#', 'policy': 'request', 'response': '您想使用什么支付方式', '#服装类型#': '短袖', '#服装颜色#': '红', '#服装尺寸#': 'm', '#分期付款期数#': '3'}
+
+您想使用什么支付方式
+===========
+请输入：支付宝
+{'available_nodes': ['scenario-买衣服_node0', 'scenario-买衣服_node4'], 'query': '支付宝', 'hit_node_repeat': False, 'hit_node': 'scenario-买衣服_node3', 'intent_score': 0.1111111111111111, 'require_slot': None, 'policy': 'reply', 'response': '好的，为您办理分期付款，分3期，使用支付宝支付，谢谢惠顾', '#服装类型#': '短袖', '#服装颜色#': '红', '#服装尺寸#': 'm', '#分期付款期数#': '3', '#支付方式#': '支付宝'}
+
+好的，为您办理分期付款，分3期，使用支付宝支付，谢谢惠顾
+===========
+请输入：没听清
+{'available_nodes': ['scenario-买衣服_node0', 'scenario-买衣服_node4'], 'query': '没听清', 'hit_node_repeat': True, 'hit_node': 'scenario-买衣服_node3', 'intent_score': 0.1111111111111111, 'require_slot': None, 'policy': 'repeat', 'response': '好的，我再说一遍。好的，为您办理分期付款，分3期，使用支付宝支付，谢谢惠顾', '#服装类型#': '短袖', '#服装颜色#': '红', '#服装尺寸#': 'm', '#分期付款期数#': '3', '#支付方式#': '支付宝'}
+
+好的，我再说一遍。好的，为您办理分期付款，分3期，使用支付宝支付，谢谢惠顾
+===========
+请输入：我买了
+{'available_nodes': [], 'query': '我买了', 'hit_node_repeat': False, 'hit_node': 'scenario-买衣服_node4', 'intent_score': 1.0, 'require_slot': None, 'policy': 'reply', 'response': '已为您下单，谢谢惠顾，流程结束', '#服装类型#': '短袖', '#服装颜色#': '红', '#服装尺寸#': 'm', '#分期付款期数#': '3', '#支付方式#': '支付宝'}
+
+已为您下单，谢谢惠顾，流程结束
